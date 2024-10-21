@@ -4,4 +4,3 @@ Pillow
 pandas
 numpy
 tensorflow
-libgl1-mesa-glx
