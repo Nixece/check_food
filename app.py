@@ -7,81 +7,90 @@ import os
 
 # ฟังก์ชันรีเซ็ตคะแนน (ลบไฟล์ scores.csv)
 def reset_scores():
-    if os.path.exists('scores.csv'):
-        os.remove('scores.csv')
-        st.write("คะแนนสะสมทั้งหมดถูกรีเซ็ตแล้ว!")
+    try:
+        if os.path.exists('scores.csv'):
+            os.remove('scores.csv')
+            st.write("คะแนนสะสมทั้งหมดถูกรีเซ็ตแล้ว!")
+        else:
+            st.write("ยังไม่มีคะแนนที่ถูกบันทึก")
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการรีเซ็ตคะแนน: {e}")
 
 # ฟังก์ชันแปลงภาพเป็นรูปแบบสี HSV เพื่อใช้ในการตรวจจับสีที่คล้ายอาหาร
 def is_food_basic(image):
-    # แปลงภาพเป็นสี HSV
-    img_array = np.array(image)
-    hsv_image = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
-    
-    # กำหนดขอบเขตของสีที่พบบ่อยในอาหาร (เช่น สีน้ำตาล, สีขาว)
-    lower_brown = np.array([10, 50, 20])  # ขอบเขตล่างของสีน้ำตาล
-    upper_brown = np.array([20, 255, 200])  # ขอบเขตบนของสีน้ำตาล
+    try:
+        img_array = np.array(image)
+        hsv_image = cv2.cvtColor(img_array, cv2.COLOR_RGB2HSV)
 
-    lower_white = np.array([0, 0, 200])  # ขอบเขตล่างของสีขาว
-    upper_white = np.array([180, 30, 255])  # ขอบเขตบนของสีขาว
-    
-    # สร้าง mask สำหรับสีน้ำตาลและสีขาว
-    mask_brown = cv2.inRange(hsv_image, lower_brown, upper_brown)
-    mask_white = cv2.inRange(hsv_image, lower_white, upper_white)
-    
-    # รวม mask ทั้งสองเข้าด้วยกัน
-    combined_mask = cv2.bitwise_or(mask_brown, mask_white)
-    
-    # คำนวณจำนวนพิกเซลที่ตรงกับสีขาวหรือน้ำตาล
-    food_pixels = cv2.countNonZero(combined_mask)
-    
-    # ตรวจสอบสัดส่วนของพิกเซลอาหารกับพิกเซลทั้งหมดในภาพ
-    total_pixels = img_array.shape[0] * img_array.shape[1]
-    food_ratio = food_pixels / total_pixels
-    
-    # ถ้าสัดส่วนพิกเซลอาหารมากกว่า 10% ถือว่าเป็นภาพอาหาร
-    if food_ratio > 0.1:
-        return True
-    return False
+        # กำหนดขอบเขตของสีที่พบบ่อยในอาหาร เช่น สีน้ำตาลและสีขาว
+        lower_brown = np.array([10, 50, 20])
+        upper_brown = np.array([20, 255, 200])
+
+        lower_white = np.array([0, 0, 200])
+        upper_white = np.array([180, 30, 255])
+
+        mask_brown = cv2.inRange(hsv_image, lower_brown, upper_brown)
+        mask_white = cv2.inRange(hsv_image, lower_white, upper_white)
+
+        combined_mask = cv2.bitwise_or(mask_brown, mask_white)
+
+        # คำนวณสัดส่วนพิกเซลที่ตรงกับสีอาหาร
+        food_pixels = cv2.countNonZero(combined_mask)
+        total_pixels = img_array.shape[0] * img_array.shape[1]
+        food_ratio = food_pixels / total_pixels
+
+        return food_ratio > 0.1  # ถ้าพิกเซลอาหารเกิน 10% ถือว่าเป็นภาพอาหาร
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการประมวลผลรูปภาพ: {e}")
+        return False
 
 # ฟังก์ชันการคำนวณคะแนนจากปริมาณเศษอาหารที่เหลือในจาน
 def calculate_waste(image):
-    gray_image = image.convert("L")  # แปลงภาพเป็นขาวดำ
-    img_array = np.array(gray_image)
+    try:
+        gray_image = image.convert("L")  # แปลงภาพเป็นขาวดำ
+        img_array = np.array(gray_image)
 
-    # ใช้การทำ Threshold เพื่อแยกเศษอาหารออกจากพื้นหลัง
-    _, threshold_image = cv2.threshold(img_array, 150, 255, cv2.THRESH_BINARY_INV)
-    
-    # ค้นหา Contours
-    contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # ใช้การทำ Threshold เพื่อแยกเศษอาหารออกจากพื้นหลัง
+        _, threshold_image = cv2.threshold(img_array, 150, 255, cv2.THRESH_BINARY_INV)
+        
+        # ค้นหา Contours
+        contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # คำนวณจำนวนพิกเซลทั้งหมดในภาพ
-    total_pixels = img_array.shape[0] * img_array.shape[1]
-    
-    # คำนวณพื้นที่ที่เป็นเศษอาหาร
-    waste_pixels = sum(cv2.contourArea(c) for c in contours if cv2.contourArea(c) > 1000)
+        # คำนวณจำนวนพิกเซลทั้งหมดในภาพ
+        total_pixels = img_array.size
 
-    # คำนวณสัดส่วนพื้นที่เศษอาหารที่เหลือ
-    waste_ratio = waste_pixels / total_pixels
-    
-    # ให้คะแนนตามสัดส่วนเศษอาหาร
-    if waste_ratio > 0.5:
+        # คำนวณจำนวนพิกเซลของเศษอาหาร (ใช้การหาพื้นที่ Contours)
+        waste_pixels = sum(cv2.contourArea(contour) for contour in contours)
+        
+        # คำนวณสัดส่วนพื้นที่เศษอาหารที่เหลือ
+        waste_ratio = waste_pixels / total_pixels
+
+        # เกณฑ์การให้คะแนนใหม่:
+        if waste_ratio > 0.5:
+            return np.random.randint(0, 3)  # ถ้าเศษอาหารเกิน 50% ได้ 0-2 คะแนน
+        elif waste_ratio < 0.1:
+            return 10  # ถ้าเศษอาหารน้อยกว่า 10% ได้ 10 คะแนน
+        else:
+            return np.random.randint(5, 8)  # ถ้าเศษอาหารระหว่าง 10%-50% ได้ 5-7 คะแนน
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
         return 0
-    elif waste_ratio < 0.05:
-        return 10
-    return int((1 - waste_ratio) * 10)
 
 # ฟังก์ชันสำหรับการบันทึกคะแนน
 def save_score(student_id, score):
-    if not os.path.exists('scores.csv'):
-        df = pd.DataFrame(columns=['Student ID', 'Score'])
-    else:
-        df = pd.read_csv('scores.csv')
-    
-    new_entry = pd.DataFrame([{'Student ID': student_id, 'Score': score}])
-    df = pd.concat([df, new_entry], ignore_index=True)
-    st.write(f"เพิ่มนักศึกษาหมายเลข {student_id} พร้อมคะแนน: {score}")
-    
-    df.to_csv('scores.csv', index=False)
+    try:
+        if not os.path.exists('scores.csv'):
+            df = pd.DataFrame(columns=['Student ID', 'Score'])
+        else:
+            df = pd.read_csv('scores.csv')
+        
+        new_entry = pd.DataFrame([{'Student ID': student_id, 'Score': score}])
+        df = pd.concat([df, new_entry], ignore_index=True)
+        st.write(f"เพิ่มนักศึกษาหมายเลข {student_id} พร้อมคะแนน: {score}")
+        
+        df.to_csv('scores.csv', index=False)
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการบันทึกคะแนน: {e}")
 
 # ฟังก์ชันแสดง 10 คนล่าสุด
 def show_latest_entries():
@@ -97,9 +106,14 @@ def show_latest_entries():
 st.title('Food Waste LE02')
 st.write("กรอกเลขประจำตัวนักศึกษาและอัปโหลดภาพจานอาหารเพื่อรับคะแนน")
 
-# ปุ่มรีเซ็ตคะแนน
-if st.button('รีเซ็ตคะแนน'):
-    reset_scores()
+# ปุ่มรีเซ็ตคะแนนพร้อมการตรวจสอบรหัสผ่าน
+with st.expander("รีเซ็ตคะแนน (สำหรับผู้ดูแลระบบเท่านั้น)"):
+    reset_password = st.text_input("กรอกรหัสผ่านเพื่อรีเซ็ตคะแนน", type="password")
+    if st.button('รีเซ็ตคะแนน'):
+        if reset_password == "LE02":  # ตรวจสอบรหัสผ่าน
+            reset_scores()
+        else:
+            st.error("รหัสผ่านไม่ถูกต้อง")
 
 # ใส่เลขประจำตัวนักศึกษา
 student_id = st.text_input("ใส่เลขประจำตัวนักศึกษา")
