@@ -29,18 +29,29 @@ def check_food_waste_auto(image):
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม
-            if area < 100:  # ใช้ค่า 100 แทนที่จะเป็น 150
+
+            # กรองพื้นที่ที่ถือว่าเป็นคราบ (เช่น ถ้าพื้นที่ใหญ่กว่า 300)
+            if area > 300:  # ค่าที่ใช้กรองสำหรับคราบ
+                continue  # ไม่นับเป็นเศษอาหาร
+
+            # ตรวจสอบลักษณะอื่น ๆ เช่น ความยาวของ contour
+            perimeter = cv2.arcLength(contour, True)
+            if perimeter / area < 5:  # ถ้าความยาวมากเกินไปถือว่าเป็นคราบ
                 continue
+
+            # ถ้าไม่ใช่คราบ เพิ่มเข้าไปใน waste_pixels
             waste_pixels += area
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = image_gray.size
+        if total_pixels == 0:  # ตรวจสอบว่า total_pixels เป็น 0 หรือไม่
+            return "ไม่สามารถประมวลผลภาพได้"
+
         waste_ratio = waste_pixels / total_pixels
         waste_percentage = waste_ratio * 100
 
         # แสดงผลลัพธ์
-        if waste_ratio < 0.04:
+        if waste_ratio < 0.05:  # เปลี่ยนเกณฑ์เป็นน้อยกว่า 5%
             return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)"
         else:
             return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)"
