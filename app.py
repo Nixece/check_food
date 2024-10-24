@@ -37,11 +37,14 @@ def check_food_waste_auto(image):
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         waste_ratio = waste_pixels / total_pixels
 
-        # ถ้าเศษอาหารเหลือน้อยกว่า 2% ถือว่าไม่เหลืออาหาร
+        # คำนวณเปอร์เซ็นต์เศษอาหาร
+        waste_percentage = waste_ratio * 100
+
+        # ถ้าเศษอาหารเหลือน้อยกว่า 4% ถือว่าไม่เหลืออาหาร
         if waste_ratio < 0.04:
-            return "บรรจุภัณฑ์ไม่เหลืออาหารเลย"
+            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)"
         else:
-            return "ยังเหลืออาหารอยู่"
+            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)"
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
         return "เกิดข้อผิดพลาด"
