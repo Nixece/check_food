@@ -17,7 +17,7 @@ def check_food_waste_auto(image):
 
         # ใช้ Adaptive Threshold เพื่อปรับการตรวจจับ
         threshold_image = cv2.adaptiveThreshold(image_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                cv2.THRESH_BINARY_INV, 11, 2)
+                                                cv2.THRESH_BINARY_INV, 15, 3)  # ปรับ blockSize และ C
 
         # ค้นหา Contours เพื่อตรวจจับเศษอาหาร
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -26,8 +26,8 @@ def check_food_waste_auto(image):
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            # กรองขนาดของเศษอาหาร (เช่น ถ้าใหญ่เกินไปแต่อาจเป็นคราบ)
-            if area > 500:  # ตัวเลขนี้สามารถปรับได้ตามความเหมาะสม
+            # กรองขนาดของเศษอาหาร (ใช้ค่าที่ลดลง)
+            if area > 300:  # ปรับขนาดให้เล็กลง
                 continue  # ถ้าขนาดใหญ่เกิน ให้ถือว่าเป็นคราบ
             waste_pixels += area
 
