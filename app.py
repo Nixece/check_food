@@ -44,6 +44,9 @@ def check_food_waste_auto(image):
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = image_gray.size
+        if total_pixels == 0:  # ตรวจสอบว่า total_pixels เป็น 0 หรือไม่
+            return "ไม่สามารถประมวลผลภาพได้"
+
         waste_ratio = waste_pixels / total_pixels
         waste_percentage = waste_ratio * 100
 
