@@ -38,7 +38,7 @@ def check_food_waste_auto(image):
         waste_ratio = waste_pixels / total_pixels
 
         # ถ้าเศษอาหารเหลือน้อยกว่า 2% ถือว่าไม่เหลืออาหาร
-        if waste_ratio < 0.02:
+        if waste_ratio < 0.04:
             return "บรรจุภัณฑ์ไม่เหลืออาหารเลย"
         else:
             return "ยังเหลืออาหารอยู่"
