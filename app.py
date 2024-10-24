@@ -9,27 +9,49 @@ def resize_image(image, max_size=(500, 500)):
     # ปรับขนาดภาพเพื่อไม่ให้ใหญ่เกินไป
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการลบพื้นหลังออกและตรวจจับเศษอาหาร
-def check_food_waste_with_bg_subtraction(image, background):
+# ฟังก์ชันสำหรับการตรวจจับเศษอาหารโดยใช้การระบุสีของบรรจุภัณฑ์
+def check_food_waste_with_color(image, packaging_color):
     try:
-        # แปลงภาพพื้นหลังและภาพที่อัปโหลดเป็นขาวดำ
-        background_gray = cv2.cvtColor(np.array(background), cv2.COLOR_RGB2GRAY)
-        image_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+        # แปลงภาพที่อัปโหลดเป็นรูปแบบ HSV (Hue, Saturation, Value) เพื่อให้ตรวจจับสีได้ง่ายขึ้น
+        image_hsv = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2HSV)
 
-        # ใช้การลบพื้นหลัง (Background Subtraction)
-        diff_image = cv2.absdiff(background_gray, image_gray)
+        # กำหนดค่าช่วงสีของบรรจุภัณฑ์ที่ระบุ (สามารถปรับได้ตามความต้องการ)
+        if packaging_color == 'ไม่ระบุ':
+            lower_color = np.array([0, 0, 0])
+            upper_color = np.array([180, 255, 255])  # ตรวจจับทุกสี
+        elif packaging_color == 'ขาว':
+            lower_color = np.array([0, 0, 200]) # สีขาวในรูปแบบ HSV
+            upper_color = np.array([180, 20, 255])
+        elif packaging_color == 'ดำ':
+            lower_color = np.array([0, 0, 0]) # สีดำในรูปแบบ HSV
+            upper_color = np.array([180, 255, 50])
+        elif packaging_color == 'ใส':
+            lower_color = np.array([0, 0, 240]) # สีใส (สว่างเกือบสุดใน HSV)
+            upper_color = np.array([180, 20, 255])
+        elif packaging_color == 'ฟ้า':
+            lower_color = np.array([90, 50, 50]) # สีฟ้าในรูปแบบ HSV
+            upper_color = np.array([130, 255, 255])
+        elif packaging_color == 'เขียว':
+            lower_color = np.array([35, 50, 50]) # สีเขียวในรูปแบบ HSV
+            upper_color = np.array([85, 255, 255])
+        elif packaging_color == 'แดง':
+            lower_color = np.array([0, 50, 50]) # สีแดงในรูปแบบ HSV
+            upper_color = np.array([10, 255, 255])
 
-        # ใช้ Threshold เพื่อตรวจจับเศษอาหาร
-        _, threshold_image = cv2.threshold(diff_image, 50, 255, cv2.THRESH_BINARY)
+        # สร้างหน้ากากเพื่อแยกพื้นที่ที่ตรงกับสีของบรรจุภัณฑ์
+        mask = cv2.inRange(image_hsv, lower_color, upper_color)
 
-        # ค้นหา Contours เพื่อตรวจจับเศษอาหาร
-        contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Invert mask เพื่อให้พื้นที่ที่ไม่ใช่บรรจุภัณฑ์เป็นพื้นที่ที่เราสนใจ (เศษอาหาร)
+        mask_inv = cv2.bitwise_not(mask)
 
-        # คำนวณจำนวนพิกเซลของเศษอาหาร (ใช้การหาพื้นที่ Contours)
+        # ใช้การค้นหา Contours เพื่อตรวจจับพื้นที่เศษอาหาร
+        contours, _ = cv2.findContours(mask_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # คำนวณจำนวนพิกเซลของเศษอาหาร
         waste_pixels = sum(cv2.contourArea(contour) for contour in contours)
 
         # คำนวณจำนวนพิกเซลทั้งหมดในภาพ
-        total_pixels = image_gray.size
+        total_pixels = image_hsv.size
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         waste_ratio = waste_pixels / total_pixels
@@ -43,29 +65,26 @@ def check_food_waste_with_bg_subtraction(image, background):
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
         return "เกิดข้อผิดพลาด"
 
-# ส่วนของการอัปโหลดภาพพื้นหลังและภาพบรรจุภัณฑ์
-st.title('Food Waste Detection with Background Subtraction')
+# ส่วนของการอัปโหลดภาพบรรจุภัณฑ์และการระบุสี
+st.title('Food Waste Detection with Color Specification')
 
-# อัปโหลดภาพพื้นหลัง
-st.write("กรุณาอัปโหลดภาพพื้นหลังที่ไม่มีบรรจุภัณฑ์")
-background_file = st.file_uploader("เลือกภาพพื้นหลัง", type=["jpg", "png", "jpeg"])
+# ให้ผู้ใช้ระบุสีของบรรจุภัณฑ์
+packaging_color = st.selectbox("กรุณาเลือกสีของบรรจุภัณฑ์", 
+                               ['ไม่ระบุ', 'ขาว', 'ดำ', 'ใส', 'ฟ้า', 'เขียว', 'แดง'])
 
 # อัปโหลดภาพบรรจุภัณฑ์
 st.write("กรุณาอัปโหลดภาพบรรจุภัณฑ์ที่ต้องการตรวจสอบเศษอาหาร")
 uploaded_file = st.file_uploader("เลือกภาพบรรจุภัณฑ์", type=["jpg", "png", "jpeg"])
 
-if background_file is not None and uploaded_file is not None:
-    background = Image.open(background_file)
+if uploaded_file is not None and packaging_color:
     image = Image.open(uploaded_file)
     
     # ปรับขนาดภาพ
-    background = resize_image(background)
     image = resize_image(image)
 
     # แสดงภาพที่อัปโหลด
-    st.image(background, caption="ภาพพื้นหลัง", use_column_width=True)
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
-    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่
-    result = check_food_waste_with_bg_subtraction(image, background)
+    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยใช้การระบุสีบรรจุภัณฑ์
+    result = check_food_waste_with_color(image, packaging_color)
     st.write(result)
