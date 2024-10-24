@@ -9,7 +9,7 @@ def resize_image(image, max_size=(500, 500)):
     # ปรับขนาดภาพเพื่อไม่ให้ใหญ่เกินไป
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการตรวจจับเศษอาหารแบบอัตโนมัติ
+# ฟังก์ชันสำหรับการตรวจจับเศษอาหารและคราบ
 def check_food_waste_auto(image):
     try:
         # แปลงภาพที่อัปโหลดเป็นขาวดำ
@@ -23,7 +23,13 @@ def check_food_waste_auto(image):
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         # คำนวณจำนวนพิกเซลของเศษอาหาร (ใช้การหาพื้นที่ Contours)
-        waste_pixels = sum(cv2.contourArea(contour) for contour in contours)
+        waste_pixels = 0
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            # กรองขนาดของเศษอาหาร (เช่น ถ้าใหญ่เกินไปแต่อาจเป็นคราบ)
+            if area > 500:  # ตัวเลขนี้สามารถปรับได้ตามความเหมาะสม
+                continue  # ถ้าขนาดใหญ่เกิน ให้ถือว่าเป็นคราบ
+            waste_pixels += area
 
         # คำนวณจำนวนพิกเซลทั้งหมดในภาพ
         total_pixels = image_gray.size
