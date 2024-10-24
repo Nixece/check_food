@@ -11,25 +11,35 @@ def resize_image(image, max_size=(500, 500)):
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารและคราบ
 def check_food_waste_auto(image):
     try:
-        image_gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-        # ปรับ blockSize และ C
-        threshold_image = cv2.adaptiveThreshold(image_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                cv2.THRESH_BINARY_INV, 9, 2)  # ปรับค่าใหม่
+        # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
+        image_array = np.array(image)
+        image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
 
+        # ใช้ Gaussian Blur เพื่อลด noise
+        blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
+
+        # ใช้ Adaptive Threshold
+        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
+                                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                cv2.THRESH_BINARY_INV, 11, 2)
+
+        # ค้นหา Contours
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            # ปรับค่าพื้นที่ที่ใช้กรองให้เล็กลง
-            if area > 150:  # ลดเกณฑ์เหลือ 150
+            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม
+            if area < 100:  # ใช้ค่า 100 แทนที่จะเป็น 150
                 continue
             waste_pixels += area
 
+        # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = image_gray.size
         waste_ratio = waste_pixels / total_pixels
         waste_percentage = waste_ratio * 100
 
+        # แสดงผลลัพธ์
         if waste_ratio < 0.04:
             return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)"
         else:
@@ -48,5 +58,7 @@ if uploaded_file is not None:
     image = Image.open(uploaded_file)
     image = resize_image(image)
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
+
+    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
     result = check_food_waste_auto(image)
     st.write(result)
