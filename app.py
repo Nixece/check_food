@@ -62,3 +62,4 @@ if uploaded_file is not None:
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
     result = check_food_waste_auto(image)
     st.write(result)
+
