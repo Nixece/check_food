@@ -3,6 +3,8 @@ from PIL import Image
 import numpy as np
 import cv2
 from PIL import ImageOps
+import qrcode
+import io
 
 # ฟังก์ชันย่อขนาดภาพ
 def resize_image(image, max_size=(500, 500)):
@@ -41,12 +43,26 @@ def check_food_waste_auto(image):
 
         # แสดงผลลัพธ์
         if waste_ratio < 0.05:
-            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)"
+            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True
         else:
-            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)"
+            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
-        return "เกิดข้อผิดพลาด"
+        return "เกิดข้อผิดพลาด", False
+
+# ฟังก์ชันสำหรับการสร้าง QR Code
+def generate_qr_code(data):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+    
+    # แปลงภาพ QR Code เป็นฟอร์แมตที่ Streamlit รองรับ
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    
+    return byte_im
 
 # ส่วนของการอัปโหลดภาพบรรจุภัณฑ์
 st.title('Food Waste Detection (Automatic)')
@@ -60,6 +76,15 @@ if uploaded_file is not None:
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result = check_food_waste_auto(image)
+    result, passed = check_food_waste_auto(image)
     st.write(result)
 
+    # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
+    if passed:
+        st.success("บรรจุภัณฑ์นี้ไม่เหลือเศษอาหาร รับ 10 คะแนน!")
+        
+        # สร้าง QR Code ที่มีข้อมูลเฉพาะ
+        qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
+        
+        # แสดง QR Code
+        st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
