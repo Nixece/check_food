@@ -161,4 +161,6 @@ if uploaded_file is not None:
             qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
             
             # แสดง QR Code
-            st.image(qr_code_image
+            st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
+    else:
+        st.error("ไม่สามารถตรวจจับบรรจุภัณฑ์ได้")
