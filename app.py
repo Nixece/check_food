@@ -77,8 +77,10 @@ def check_food_waste_auto(image, packaging_mask):
         # ใช้ Gaussian Blur เพื่อลด noise
         blurred_image = cv2.GaussianBlur(masked_image, (5, 5), 0)
 
-        # ใช้ Threshold เพื่อตรวจจับเศษอาหาร
-        _, threshold_image = cv2.threshold(blurred_image, 127, 255, cv2.THRESH_BINARY_INV)
+        # ใช้ Adaptive Threshold เพื่อตรวจจับเศษอาหาร
+        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
+                                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                                cv2.THRESH_BINARY_INV, 11, 2)
 
         # ค้นหา Contours สำหรับเศษอาหาร
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -88,15 +90,15 @@ def check_food_waste_auto(image, packaging_mask):
         for contour in contours:
             area = cv2.contourArea(contour)
             # ตรวจสอบว่าเศษอาหารอยู่ภายในพื้นที่บรรจุภัณฑ์
-            if area < 50:  # กำหนดพื้นที่ขั้นต่ำเพื่อตัด Noise ออก
+            if area < 20:  # กำหนดพื้นที่ขั้นต่ำเพื่อตัด Noise ออก
                 continue
             waste_pixels += area
             cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = cv2.countNonZero(packaging_mask)
-        waste_ratio = waste_pixels / total_pixels
-        waste_percentage = waste_ratio * 100
+        waste_ratio = waste_pixels / total_pixels if total_pixels > 0 else 0
+        waste_percentage = min(waste_ratio * 100, 100)  # จำกัดไม่ให้เกิน 100%
 
         # แสดงผลลัพธ์
         if waste_ratio < 0.05:
