@@ -1,7 +1,5 @@
 streamlit
 opencv-python-headless
 Pillow
-pandas
 numpy
-tensorflow
 qrcode
