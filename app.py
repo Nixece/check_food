@@ -6,7 +6,7 @@ from PIL import ImageOps
 import qrcode
 import io
 
-# ฟังก์ชันย่อขนาดภาพให้เล็กลงสำหรับการประมวลผลเร็วขึ้น
+# ฟังก์ชันย่อขนาดภาพ
 def resize_image(image, max_size=(300, 300)):
     return ImageOps.contain(image, max_size)
 
@@ -17,13 +17,13 @@ def load_image(image_file):
 
 # ฟังก์ชันหาค่าความแตกต่างของสี
 def color_difference(color1, color2):
-    return np.sqrt(np.sum((color1 - color2) ** 2))
+    return np.sqrt(np.sum((color1 - color2) ** 2, axis=-1))
 
 # ฟังก์ชันหาสีเฉลี่ยจากขอบของบรรจุภัณฑ์
 def get_edge_color_average(image, mask):
     edges = cv2.Canny(mask, 100, 200)
     edge_pixels = image[edges > 0]
-    return np.mean(edge_pixels, axis=0)
+    return np.mean(edge_pixels, axis=0) if len(edge_pixels) > 0 else np.array([0, 0, 0])
 
 # ฟังก์ชันหาความแตกต่างระหว่างพื้นหลังและบรรจุภัณฑ์
 def detect_package(background, package_image):
@@ -55,17 +55,11 @@ def check_food_waste_auto(image, mask, edge_color):
         # แปลงภาพเป็น RGB เพื่อเปรียบเทียบสี
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
-        # ตรวจสอบพิกเซลใน Mask ที่แตกต่างจากสีขอบ
-        threshold = 30  # กำหนดเกณฑ์ความแตกต่างของสี
-        food_waste_mask = np.zeros_like(mask)
-        
-        for y in range(image_rgb.shape[0]):
-            for x in range(image_rgb.shape[1]):
-                if mask[y, x] > 0:  # ตรวจเฉพาะพิกเซลในพื้นที่บรรจุภัณฑ์
-                    pixel_color = image_rgb[y, x]
-                    if color_difference(pixel_color, edge_color) > threshold:
-                        food_waste_mask[y, x] = 255
-        
+        # ตรวจสอบพิกเซลใน Mask ที่แตกต่างจากสีขอบ (แบบละเอียด)
+        threshold = 15  # ลด threshold เพื่อให้การตรวจจับแม่นยำขึ้น
+        diff = color_difference(image_rgb, edge_color)
+        food_waste_mask = np.where((mask > 0) & (diff > threshold), 255, 0).astype(np.uint8)
+
         # คำนวณจำนวนพิกเซลของเศษอาหาร
         waste_pixels = cv2.countNonZero(food_waste_mask)
         
