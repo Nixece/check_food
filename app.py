@@ -71,13 +71,14 @@ def check_food_waste_auto(image, packaging_mask):
         image_array = np.array(image)
         image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
 
-        # ใช้ Gaussian Blur เพื่อลด noise
-        blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
+        # ใช้ Mask ของบรรจุภัณฑ์เพื่อให้เหลือเฉพาะพื้นที่บรรจุภัณฑ์
+        masked_image = cv2.bitwise_and(image_gray, image_gray, mask=packaging_mask)
 
-        # ใช้ Adaptive Threshold
-        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
-                                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                cv2.THRESH_BINARY_INV, 11, 2)
+        # ใช้ Gaussian Blur เพื่อลด noise
+        blurred_image = cv2.GaussianBlur(masked_image, (5, 5), 0)
+
+        # ใช้ Threshold เพื่อตรวจจับเศษอาหาร
+        _, threshold_image = cv2.threshold(blurred_image, 127, 255, cv2.THRESH_BINARY_INV)
 
         # ค้นหา Contours สำหรับเศษอาหาร
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -87,7 +88,7 @@ def check_food_waste_auto(image, packaging_mask):
         for contour in contours:
             area = cv2.contourArea(contour)
             # ตรวจสอบว่าเศษอาหารอยู่ภายในพื้นที่บรรจุภัณฑ์
-            if area < 100 or cv2.pointPolygonTest(packaging_mask, tuple(contour[0][0]), False) < 0:
+            if area < 50:  # กำหนดพื้นที่ขั้นต่ำเพื่อตัด Noise ออก
                 continue
             waste_pixels += area
             cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
