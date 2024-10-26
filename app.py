@@ -26,19 +26,19 @@ def detect_package(background, package_image):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area < 500:  # เลือกค่า 500 เพื่อลบพื้นที่ขนาดเล็ก
+        if area < 500:  # กรองพื้นที่ขนาดเล็กออก
             cv2.drawContours(mask, [contour], -1, 0, thickness=cv2.FILLED)
     
     # ใช้ Mask ที่ปรับปรุงในการลบพื้นหลัง
     package_detected = cv2.bitwise_and(package_image, package_image, mask=mask)
     
-    # คำนวณพื้นที่บรรจุภัณฑ์จากภาพที่เหลืออยู่
-    total_pixels = cv2.countNonZero(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY))
+    # คำนวณพื้นที่บรรจุภัณฑ์จากภาพที่เหลืออยู่หลังลบพื้นหลัง
+    total_pixels = cv2.countNonZero(mask)
     
     return package_detected, total_pixels
 
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
-def check_food_waste_auto(image, total_pixels):
+def check_food_waste_auto(image, mask):
     try:
         # แปลงเป็นภาพขาวดำ
         image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -46,20 +46,17 @@ def check_food_waste_auto(image, total_pixels):
         # ใช้ Gaussian Blur เพื่อลด noise
         blurred_image = cv2.GaussianBlur(image_gray, (7, 7), 0)
 
-        # ใช้ Threshold แบบคงที่
+        # ใช้ Threshold เพื่อตรวจจับเศษอาหาร
         _, threshold_image = cv2.threshold(blurred_image, 120, 255, cv2.THRESH_BINARY_INV)
 
-        # ค้นหา Contours ของเศษอาหาร
-        contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # นำ Mask ที่ได้มาใช้เพื่อตรวจจับเศษอาหารในพื้นที่บรรจุภัณฑ์เท่านั้น
+        food_waste_area = cv2.bitwise_and(threshold_image, threshold_image, mask=mask)
 
-        waste_pixels = 0
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area < 50:  # กรองเฉพาะ Contours ที่ใหญ่พอ
-                continue
-            waste_pixels += area
+        # คำนวณพิกเซลของเศษอาหาร
+        waste_pixels = cv2.countNonZero(food_waste_area)
 
-        waste_ratio = waste_pixels / total_pixels
+        # คำนวณเปอร์เซ็นต์ของเศษอาหาร
+        waste_ratio = waste_pixels / cv2.countNonZero(mask)
         waste_percentage = waste_ratio * 100
 
         if waste_ratio < 0.05:
@@ -113,7 +110,7 @@ if package_file is not None:
         st.image(package_detected, caption="ภาพที่มีบรรจุภัณฑ์", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed = check_food_waste_auto(package_detected, total_pixels)
+    result, passed = check_food_waste_auto(package_detected, cv2.inRange(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY), 1, 255))
     st.write(result)
 
     # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
