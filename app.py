@@ -31,10 +31,14 @@ def detect_package(background, package_image):
     
     # ใช้ Mask ที่ปรับปรุงในการลบพื้นหลัง
     package_detected = cv2.bitwise_and(package_image, package_image, mask=mask)
-    return package_detected, mask
+    
+    # คำนวณพื้นที่บรรจุภัณฑ์จากภาพที่เหลืออยู่
+    total_pixels = cv2.countNonZero(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY))
+    
+    return package_detected, total_pixels
 
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
-def check_food_waste_auto(image, mask):
+def check_food_waste_auto(image, total_pixels):
     try:
         # แปลงเป็นภาพขาวดำ
         image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -55,8 +59,6 @@ def check_food_waste_auto(image, mask):
                 continue
             waste_pixels += area
 
-        # คำนวณจำนวนพิกเซลเฉพาะบรรจุภัณฑ์จาก Mask
-        total_pixels = cv2.countNonZero(mask)
         waste_ratio = waste_pixels / total_pixels
         waste_percentage = waste_ratio * 100
 
@@ -101,17 +103,17 @@ if package_file is not None:
         background_image = resize_image(background_image)
         background_array = np.array(background_image)
         
-        # ตรวจจับบรรจุภัณฑ์โดยหาความแตกต่างและสร้าง Mask
-        package_detected, mask = detect_package(background_array, package_array)
+        # ตรวจจับบรรจุภัณฑ์โดยหาความแตกต่างและคำนวณพื้นที่บรรจุภัณฑ์
+        package_detected, total_pixels = detect_package(background_array, package_array)
         st.image(package_detected, caption="บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
     else:
-        # หากไม่มีพื้นหลัง ใช้ภาพทั้งหมดในการตรวจจับเศษอาหารและสร้าง Mask จากภาพทั้งหมด
+        # หากไม่มีพื้นหลัง ใช้ภาพทั้งหมดในการตรวจจับเศษอาหารและคำนวณพิกเซลในภาพทั้งหมด
         package_detected = package_array
-        mask = cv2.inRange(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY), 1, 255)  # Mask ครอบคลุมทั้งหมด
+        total_pixels = cv2.countNonZero(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY))
         st.image(package_detected, caption="ภาพที่มีบรรจุภัณฑ์", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed = check_food_waste_auto(package_detected, mask)
+    result, passed = check_food_waste_auto(package_detected, total_pixels)
     st.write(result)
 
     # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
