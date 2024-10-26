@@ -10,8 +10,36 @@ import io
 def resize_image(image, max_size=(500, 500)):
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการตรวจจับพื้นที่บรรจุภัณฑ์ที่ใหญ่ที่สุดและเศษอาหาร
-def check_food_waste_auto(image):
+# ฟังก์ชันสำหรับการตรวจจับบรรจุภัณฑ์
+def detect_packaging(image):
+    # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
+    image_array = np.array(image)
+    image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+
+    # ใช้ Gaussian Blur เพื่อลด noise
+    blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
+
+    # ใช้ Canny edge detection เพื่อตรวจจับขอบของบรรจุภัณฑ์
+    edges = cv2.Canny(blurred_image, 100, 200)
+
+    # ค้นหา Contours สำหรับบรรจุภัณฑ์
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # ตรวจจับ Contour ที่ใหญ่ที่สุดเพื่อเป็นบรรจุภัณฑ์
+    largest_contour = max(contours, key=cv2.contourArea)
+
+    # สำเนาภาพสำหรับวาดขอบเขตบรรจุภัณฑ์ที่ใหญ่ที่สุด
+    packaging_detected = image_array.copy()
+    cv2.drawContours(packaging_detected, [largest_contour], -1, (0, 255, 0), 2)  # วาดขอบเขตบรรจุภัณฑ์ที่ใหญ่ที่สุด
+
+    # สร้าง mask สำหรับพื้นที่บรรจุภัณฑ์ที่ตรวจพบ
+    mask = np.zeros_like(image_gray)
+    cv2.drawContours(mask, [largest_contour], -1, 255, thickness=cv2.FILLED)
+
+    return packaging_detected, mask, largest_contour
+
+# ฟังก์ชันสำหรับการตรวจจับเศษอาหารภายในบรรจุภัณฑ์
+def check_food_waste_auto(image, mask):
     try:
         # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
         image_array = np.array(image)
@@ -25,44 +53,35 @@ def check_food_waste_auto(image):
                                                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                 cv2.THRESH_BINARY_INV, 11, 2)
 
-        # ค้นหา Contours ทั้งหมด
+        # ค้นหา Contours สำหรับเศษอาหาร
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # ตรวจจับ Contour ที่ใหญ่ที่สุดเพื่อเป็นบรรจุภัณฑ์
-        largest_contour = max(contours, key=cv2.contourArea)
-
-        # สำเนาภาพสำหรับวาดขอบเขตบรรจุภัณฑ์ที่ใหญ่ที่สุด
-        packaging_detected = image_array.copy()
-        cv2.drawContours(packaging_detected, [largest_contour], -1, (0, 255, 0), 2)  # วาดขอบเขตบรรจุภัณฑ์ที่ใหญ่ที่สุด
-
-        # หาพื้นที่บรรจุภัณฑ์ที่ใหญ่ที่สุด
-        packaging_area = cv2.contourArea(largest_contour)
 
         # สำเนาภาพสำหรับวาดขอบเขตเศษอาหาร
         food_waste_detected = image_array.copy()
 
-        # ค้นหา Contours สำหรับเศษอาหาร
         waste_pixels = 0
+        packaging_area = cv2.countNonZero(mask)
+
         for contour in contours:
             area = cv2.contourArea(contour)
-            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม (นับเฉพาะเศษอาหารที่ไม่ใช่บรรจุภัณฑ์ที่ใหญ่ที่สุด)
-            if area < 100 or contour is largest_contour:  # ข้ามบรรจุภัณฑ์ที่ใหญ่ที่สุด
-                continue
+            # ตรวจสอบว่าเศษอาหารอยู่ภายในพื้นที่บรรจุภัณฑ์ (ใช้ mask)
+            if area < 100 or cv2.pointPolygonTest(mask, tuple(contour[0][0]), False) < 0:
+                continue  # ข้ามเศษอาหารที่อยู่นอกพื้นที่บรรจุภัณฑ์
             waste_pixels += area  # เก็บพื้นที่ของเศษอาหาร
             cv2.drawContours(food_waste_detected, [contour], -1, (0, 0, 255), 2)  # วาดขอบเขตเศษอาหาร
 
-        # คำนวณสัดส่วนของเศษอาหารที่เหลือเทียบกับบรรจุภัณฑ์
+        # คำนวณสัดส่วนของเศษอาหารที่เหลือเทียบกับพื้นที่บรรจุภัณฑ์
         waste_ratio = waste_pixels / packaging_area if packaging_area > 0 else 0
         waste_percentage = waste_ratio * 100
 
         # แสดงผลลัพธ์
         if waste_ratio < 0.05:
-            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True, packaging_detected, food_waste_detected
+            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True, food_waste_detected
         else:
-            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False, packaging_detected, food_waste_detected
+            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False, food_waste_detected
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
-        return "เกิดข้อผิดพลาด", False, None, None
+        return "เกิดข้อผิดพลาด", False, None
 
 # ฟังก์ชันสำหรับการสร้าง QR Code
 def generate_qr_code(data):
@@ -89,13 +108,13 @@ if uploaded_file is not None:
     image = resize_image(image)
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
-    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed, packaging_img, waste_img = check_food_waste_auto(image)
-    st.write(result)
+    # ตรวจจับบรรจุภัณฑ์
+    packaging_img, mask, largest_contour = detect_packaging(image)
+    st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
 
-    # แสดงภาพบรรจุภัณฑ์ที่ตรวจจับได้
-    if packaging_img is not None:
-        st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
+    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
+    result, passed, waste_img = check_food_waste_auto(image, mask)
+    st.write(result)
 
     # แสดงภาพเศษอาหารที่ตรวจจับได้
     if waste_img is not None:
