@@ -92,8 +92,10 @@ def check_food_waste_auto(image, packaging_mask):
             # ตรวจสอบว่าเศษอาหารอยู่ภายในพื้นที่บรรจุภัณฑ์
             if area < 20:  # กำหนดพื้นที่ขั้นต่ำเพื่อตัด Noise ออก
                 continue
-            waste_pixels += area
-            cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
+            # ตรวจสอบว่าเศษอาหารอยู่ในพื้นที่บรรจุภัณฑ์
+            if cv2.pointPolygonTest(packaging_mask, tuple(contour[0][0]), False) >= 0:
+                waste_pixels += area
+                cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = cv2.countNonZero(packaging_mask)
