@@ -22,12 +22,19 @@ def detect_package(background, package_image):
     # ตั้งค่า Threshold เพื่อตรวจจับเฉพาะพื้นที่ที่แตกต่างกัน (บรรจุภัณฑ์)
     _, mask = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
     
-    # ใช้ Mask เพื่อแสดงเฉพาะบรรจุภัณฑ์
+    # กรอง Contours เล็ก ๆ ออก
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area < 500:  # เลือกค่า 500 เพื่อลบพื้นที่ขนาดเล็ก
+            cv2.drawContours(mask, [contour], -1, 0, thickness=cv2.FILLED)
+    
+    # ใช้ Mask ที่ปรับปรุงในการลบพื้นหลัง
     package_detected = cv2.bitwise_and(package_image, package_image, mask=mask)
-    return package_detected
+    return package_detected, mask
 
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
-def check_food_waste_auto(image):
+def check_food_waste_auto(image, mask):
     try:
         # แปลงเป็นภาพขาวดำ
         image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
@@ -38,18 +45,18 @@ def check_food_waste_auto(image):
         # ใช้ Threshold แบบคงที่
         _, threshold_image = cv2.threshold(blurred_image, 120, 255, cv2.THRESH_BINARY_INV)
 
-        # ค้นหา Contours
+        # ค้นหา Contours ของเศษอาหาร
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area < 50:
+            if area < 50:  # กรองเฉพาะ Contours ที่ใหญ่พอ
                 continue
             waste_pixels += area
 
-        # คำนวณจำนวนพิกเซลในพื้นที่ของบรรจุภัณฑ์
-        total_pixels = cv2.countNonZero(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY))
+        # คำนวณจำนวนพิกเซลเฉพาะบรรจุภัณฑ์จาก Mask
+        total_pixels = cv2.countNonZero(mask)
         waste_ratio = waste_pixels / total_pixels
         waste_percentage = waste_ratio * 100
 
@@ -94,16 +101,17 @@ if package_file is not None:
         background_image = resize_image(background_image)
         background_array = np.array(background_image)
         
-        # ตรวจจับบรรจุภัณฑ์โดยหาความแตกต่าง
-        package_detected = detect_package(background_array, package_array)
+        # ตรวจจับบรรจุภัณฑ์โดยหาความแตกต่างและสร้าง Mask
+        package_detected, mask = detect_package(background_array, package_array)
         st.image(package_detected, caption="บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
     else:
-        # หากไม่มีพื้นหลัง ใช้ภาพทั้งหมดในการตรวจจับเศษอาหาร
+        # หากไม่มีพื้นหลัง ใช้ภาพทั้งหมดในการตรวจจับเศษอาหารและสร้าง Mask จากภาพทั้งหมด
         package_detected = package_array
+        mask = cv2.inRange(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY), 1, 255)  # Mask ครอบคลุมทั้งหมด
         st.image(package_detected, caption="ภาพที่มีบรรจุภัณฑ์", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed = check_food_waste_auto(package_detected)
+    result, passed = check_food_waste_auto(package_detected, mask)
     st.write(result)
 
     # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
