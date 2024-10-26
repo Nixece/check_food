@@ -10,20 +10,33 @@ import io
 def resize_image(image, max_size=(500, 500)):
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการตรวจจับเศษอาหารและคราบ
+# ฟังก์ชันหาความแตกต่างระหว่างพื้นหลังและบรรจุภัณฑ์
+def detect_package(background, package_image):
+    # แปลงภาพเป็นขาวดำ
+    background_gray = cv2.cvtColor(background, cv2.COLOR_RGB2GRAY)
+    package_gray = cv2.cvtColor(package_image, cv2.COLOR_RGB2GRAY)
+    
+    # หาความแตกต่างระหว่างภาพพื้นหลังและภาพบรรจุภัณฑ์
+    diff = cv2.absdiff(background_gray, package_gray)
+    
+    # ตั้งค่า Threshold เพื่อตรวจจับเฉพาะพื้นที่ที่แตกต่างกัน (บรรจุภัณฑ์)
+    _, mask = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+    
+    # ใช้ Mask เพื่อแสดงเฉพาะบรรจุภัณฑ์
+    package_detected = cv2.bitwise_and(package_image, package_image, mask=mask)
+    return package_detected
+
+# ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
 def check_food_waste_auto(image):
     try:
-        # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
-        image_array = np.array(image)
-        image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
+        # แปลงเป็นภาพขาวดำ
+        image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
         # ใช้ Gaussian Blur เพื่อลด noise
-        blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
+        blurred_image = cv2.GaussianBlur(image_gray, (7, 7), 0)
 
-        # ใช้ Adaptive Threshold
-        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
-                                                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                                cv2.THRESH_BINARY_INV, 11, 2)
+        # ใช้ Threshold แบบคงที่
+        _, threshold_image = cv2.threshold(blurred_image, 120, 255, cv2.THRESH_BINARY_INV)
 
         # ค้นหา Contours
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -31,17 +44,15 @@ def check_food_waste_auto(image):
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม
-            if area < 100:  # ใช้ค่า 100 แทนที่จะเป็น 150
+            if area < 50:
                 continue
             waste_pixels += area
 
-        # คำนวณสัดส่วนของเศษอาหารที่เหลือ
-        total_pixels = image_gray.size
+        # คำนวณจำนวนพิกเซลในพื้นที่ของบรรจุภัณฑ์
+        total_pixels = cv2.countNonZero(cv2.cvtColor(image, cv2.COLOR_RGB2GRAY))
         waste_ratio = waste_pixels / total_pixels
         waste_percentage = waste_ratio * 100
 
-        # แสดงผลลัพธ์
         if waste_ratio < 0.05:
             return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True
         else:
@@ -57,26 +68,42 @@ def generate_qr_code(data):
     qr.make(fit=True)
     img = qr.make_image(fill='black', back_color='white')
     
-    # แปลงภาพ QR Code เป็นฟอร์แมตที่ Streamlit รองรับ
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     byte_im = buf.getvalue()
     
     return byte_im
 
-# ส่วนของการอัปโหลดภาพบรรจุภัณฑ์
+# ส่วนของการอัปโหลดภาพพื้นหลังและบรรจุภัณฑ์
 st.title('Food Waste Detection (Automatic)')
 
-st.write("กรุณาอัปโหลดภาพบรรจุภัณฑ์ที่ต้องการตรวจสอบเศษอาหาร")
-uploaded_file = st.file_uploader("เลือกภาพบรรจุภัณฑ์", type=["jpg", "png", "jpeg"])
+st.write("กรุณาอัปโหลดภาพพื้นหลัง (ถ้ามี)")
+background_file = st.file_uploader("เลือกภาพพื้นหลัง", type=["jpg", "png", "jpeg"], key="background")
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    image = resize_image(image)
-    st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
+st.write("กรุณาอัปโหลดภาพที่มีบรรจุภัณฑ์")
+package_file = st.file_uploader("เลือกภาพที่มีบรรจุภัณฑ์", type=["jpg", "png", "jpeg"], key="package")
+
+if package_file is not None:
+    package_image = Image.open(package_file)
+    package_image = resize_image(package_image)
+    package_array = np.array(package_image)
+    
+    # หากมีภาพพื้นหลัง ให้ใช้การตรวจจับความแตกต่าง
+    if background_file is not None:
+        background_image = Image.open(background_file)
+        background_image = resize_image(background_image)
+        background_array = np.array(background_image)
+        
+        # ตรวจจับบรรจุภัณฑ์โดยหาความแตกต่าง
+        package_detected = detect_package(background_array, package_array)
+        st.image(package_detected, caption="บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
+    else:
+        # หากไม่มีพื้นหลัง ใช้ภาพทั้งหมดในการตรวจจับเศษอาหาร
+        package_detected = package_array
+        st.image(package_detected, caption="ภาพที่มีบรรจุภัณฑ์", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed = check_food_waste_auto(image)
+    result, passed = check_food_waste_auto(package_detected)
     st.write(result)
 
     # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
