@@ -8,15 +8,6 @@ from PIL import ImageOps
 def resize_image(image, max_size=(500, 500)):
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับคำนวณตัวปรับคูณตามเปอร์เซ็นต์
-def dynamic_scaling_factor(percentage):
-    if percentage < 50:
-        # ถ้าเปอร์เซ็นต์น้อยกว่า 50 จะคูณตามสัดส่วนจาก 1 ไปจนถึง 2
-        return 1 + (percentage / 50)  # ตัวคูณจะเพิ่มจาก 1 ไปถึง 2 ที่ 50%
-    else:
-        # ถ้าเปอร์เซ็นต์มากกว่า 50 จะคูณน้อยลงเรื่อยๆ จาก 2 ไปถึง 1
-        return 2 - ((percentage - 50) / 50)  # ตัวคูณจะลดจาก 2 ไปถึง 1 ที่ 100%
-
 # ฟังก์ชันสำหรับการตรวจจับขนาดบรรจุภัณฑ์โดยอัตโนมัติ
 def detect_package_size(image):
     # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
@@ -42,8 +33,8 @@ def detect_package_size(image):
     # คืนค่าพื้นที่ของบรรจุภัณฑ์ (หน่วยเป็นพิกเซล)
     return max_area
 
-# ฟังก์ชันสำหรับการตรวจจับเศษอาหารและปรับสัดส่วนอาหารที่เหลือด้วย dynamic scaling factor
-def check_food_waste_auto_with_dynamic_scaling(image):
+# ฟังก์ชันสำหรับการตรวจจับเศษอาหารและคำนวณเปอร์เซ็นต์
+def check_food_waste_percentage(image):
     try:
         # ตรวจจับขนาดบรรจุภัณฑ์โดยอัตโนมัติ
         package_area = detect_package_size(image)
@@ -70,28 +61,18 @@ def check_food_waste_auto_with_dynamic_scaling(image):
                 continue
             waste_pixels += area
 
-        # แสดง Contour ที่ตรวจจับได้เพื่อตรวจสอบ
-        contour_image = cv2.drawContours(image_array.copy(), contours, -1, (0, 255, 0), 2)
-        st.image(contour_image, caption="Contour ที่ตรวจพบ", use_column_width=True)
-
-        # คำนวณเปอร์เซ็นต์ของอาหารที่เหลือจากพื้นที่เศษอาหาร
+        # คำนวณเปอร์เซ็นต์ของพื้นที่เศษอาหารเทียบกับบรรจุภัณฑ์
         if package_area > 0:
             food_remaining_percentage = (waste_pixels / package_area) * 100
         else:
             food_remaining_percentage = 100  # หากไม่พบขนาดบรรจุภัณฑ์ ให้ตั้งค่าเป็น 100%
 
-        # คำนวณตัวคูณตามเปอร์เซ็นต์
-        scaling_factor = dynamic_scaling_factor(food_remaining_percentage)
-
-        # ปรับสัดส่วนอาหารที่เหลือโดยใช้ตัวคูณ
-        food_remaining_percentage_adjusted = min(food_remaining_percentage * scaling_factor, 100)
-
-        # แสดงผลลัพธ์
-        return f"เปอร์เซ็นต์อาหารที่เหลือ (ปรับแล้ว): {food_remaining_percentage_adjusted:.2f}%", food_remaining_percentage_adjusted
+        # แสดงผลลัพธ์เป็นเปอร์เซ็นต์ของพื้นที่เศษอาหาร
+        return f"เปอร์เซ็นต์พื้นที่เศษอาหารที่เหลือ: {food_remaining_percentage:.2f}%"
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
-        return "เกิดข้อผิดพลาด", 0
+        return "เกิดข้อผิดพลาด"
 
 # ส่วนของการอัปโหลดภาพบรรจุภัณฑ์
 st.title('Food Waste Detection (Automatic)')
@@ -104,6 +85,6 @@ if uploaded_file is not None:
     image = resize_image(image)
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
-    # ประเมินว่าอาหารเหลืออยู่เท่าไหร่และปรับค่าให้เหมาะสมด้วย dynamic scaling factor
-    result, food_remaining_percentage_adjusted = check_food_waste_auto_with_dynamic_scaling(image)
+    # ประเมินว่าอาหารเหลืออยู่เท่าไหร่โดยใช้เปอร์เซ็นต์ของพื้นที่เศษอาหาร
+    result = check_food_waste_percentage(image)
     st.write(result)
