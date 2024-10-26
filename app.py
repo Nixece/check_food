@@ -10,8 +10,8 @@ import io
 def resize_image(image, max_size=(500, 500)):
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการตรวจจับบรรจุภัณฑ์
-def detect_packaging(image):
+# ฟังก์ชันสำหรับการตรวจจับบรรจุภัณฑ์จากขอบภาพเข้ามากลาง
+def detect_packaging_from_edges(image):
     # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
     image_array = np.array(image)
     image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
@@ -21,6 +21,14 @@ def detect_packaging(image):
 
     # ใช้ Canny edge detection เพื่อตรวจจับขอบของบรรจุภัณฑ์
     edges = cv2.Canny(blurred_image, 100, 200)
+
+    # ใช้การไล่จากขอบของภาพ (สร้างกรอบ)
+    height, width = edges.shape
+    mask = np.zeros((height, width), dtype=np.uint8)
+
+    # สร้างกรอบขอบภาพที่ใหญ่ขึ้นจากขอบเข้ามาด้านใน (4 ด้าน)
+    cv2.rectangle(mask, (10, 10), (width - 10, height - 10), 255, -1)  # ทำกรอบรอบขอบภาพ
+    edges = cv2.bitwise_and(edges, mask)
 
     # ค้นหา Contours สำหรับบรรจุภัณฑ์
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -108,8 +116,8 @@ if uploaded_file is not None:
     image = resize_image(image)
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
-    # ตรวจจับบรรจุภัณฑ์
-    packaging_img, mask, largest_contour = detect_packaging(image)
+    # ตรวจจับบรรจุภัณฑ์จากขอบภาพเข้ามาตรงกลาง
+    packaging_img, mask, largest_contour = detect_packaging_from_edges(image)
     st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
