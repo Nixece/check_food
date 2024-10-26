@@ -10,8 +10,8 @@ import io
 def resize_image(image, max_size=(300, 300)):
     return ImageOps.contain(image, max_size)
 
-# ใช้ caching เพื่อเร่งความเร็วในการแปลงภาพเป็น numpy array
-@st.cache
+# ใช้ `st.cache_data` เพื่อเร่งความเร็วในการแปลงภาพเป็น numpy array
+@st.cache_data
 def load_image(image_file):
     return np.array(Image.open(image_file))
 
@@ -23,7 +23,7 @@ def color_difference(color1, color2):
 def get_edge_color_average(image, mask):
     edges = cv2.Canny(mask, 100, 200)
     edge_pixels = image[edges > 0]
-    return np.mean(edge_pixels, axis=0)
+    return np.mean(edge_pixels, axis=0) if len(edge_pixels) > 0 else np.array([0, 0, 0])
 
 # ฟังก์ชันหาความแตกต่างระหว่างพื้นหลังและบรรจุภัณฑ์
 def detect_package(background, package_image):
@@ -80,6 +80,19 @@ def check_food_waste_auto(image, mask, edge_color):
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
         return "เกิดข้อผิดพลาด", False
+
+# ฟังก์ชันสำหรับการสร้าง QR Code
+def generate_qr_code(data):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+    
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    
+    return byte_im
 
 # ส่วนของการอัปโหลดภาพพื้นหลังและบรรจุภัณฑ์
 st.title('Food Waste Detection (Automatic)')
