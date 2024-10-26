@@ -6,21 +6,23 @@ from PIL import ImageOps
 import qrcode
 import io
 
-# ฟังก์ชันย่อขนาดภาพ
-def resize_image(image, max_size=(500, 500)):
+# ฟังก์ชันย่อขนาดภาพให้เล็กลงสำหรับการประมวลผลเร็วขึ้น
+def resize_image(image, max_size=(300, 300)):
     return ImageOps.contain(image, max_size)
+
+# ใช้ caching เพื่อเร่งความเร็วในการแปลงภาพเป็น numpy array
+@st.cache
+def load_image(image_file):
+    return np.array(Image.open(image_file))
 
 # ฟังก์ชันหาความแตกต่างระหว่างพื้นหลังและบรรจุภัณฑ์
 def detect_package(background, package_image):
-    # แปลงภาพเป็นขาวดำ
     background_gray = cv2.cvtColor(background, cv2.COLOR_RGB2GRAY)
     package_gray = cv2.cvtColor(package_image, cv2.COLOR_RGB2GRAY)
     
-    # หาความแตกต่างระหว่างภาพพื้นหลังและภาพบรรจุภัณฑ์
+    # หาความแตกต่างระหว่างภาพพื้นหลังและภาพบรรจุภัณฑ์ พร้อมปรับค่า Threshold ให้เหมาะสม
     diff = cv2.absdiff(background_gray, package_gray)
-    
-    # ตั้งค่า Threshold เพื่อตรวจจับเฉพาะพื้นที่ที่แตกต่างกัน (บรรจุภัณฑ์)
-    _, mask = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+    _, mask = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
     
     # กรอง Contours เล็ก ๆ ออก
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -29,7 +31,7 @@ def detect_package(background, package_image):
         if area < 500:  # กรองพื้นที่ขนาดเล็กออก
             cv2.drawContours(mask, [contour], -1, 0, thickness=cv2.FILLED)
     
-    # ใช้ Mask ที่ปรับปรุงในการลบพื้นหลัง
+    # ลบพื้นหลังออกจากบรรจุภัณฑ์
     package_detected = cv2.bitwise_and(package_image, package_image, mask=mask)
     
     # คำนวณพื้นที่บรรจุภัณฑ์จากภาพที่เหลืออยู่หลังลบพื้นหลัง
@@ -40,22 +42,16 @@ def detect_package(background, package_image):
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
 def check_food_waste_auto(image, mask):
     try:
-        # แปลงเป็นภาพขาวดำ
         image_gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-
-        # ใช้ Gaussian Blur เพื่อลด noise
         blurred_image = cv2.GaussianBlur(image_gray, (7, 7), 0)
 
         # ใช้ Threshold เพื่อตรวจจับเศษอาหาร
         _, threshold_image = cv2.threshold(blurred_image, 120, 255, cv2.THRESH_BINARY_INV)
-
+        
         # นำ Mask ที่ได้มาใช้เพื่อตรวจจับเศษอาหารในพื้นที่บรรจุภัณฑ์เท่านั้น
         food_waste_area = cv2.bitwise_and(threshold_image, threshold_image, mask=mask)
-
-        # คำนวณพิกเซลของเศษอาหาร
         waste_pixels = cv2.countNonZero(food_waste_area)
 
-        # คำนวณเปอร์เซ็นต์ของเศษอาหาร
         waste_ratio = waste_pixels / cv2.countNonZero(mask)
         waste_percentage = waste_ratio * 100
 
@@ -90,21 +86,20 @@ st.write("กรุณาอัปโหลดภาพที่มีบรร�
 package_file = st.file_uploader("เลือกภาพที่มีบรรจุภัณฑ์", type=["jpg", "png", "jpeg"], key="package")
 
 if package_file is not None:
-    package_image = Image.open(package_file)
-    package_image = resize_image(package_image)
+    package_image = load_image(package_file)
+    package_image = resize_image(Image.fromarray(package_image))
     package_array = np.array(package_image)
     
-    # หากมีภาพพื้นหลัง ให้ใช้การตรวจจับความแตกต่าง
+    # ตรวจจับบรรจุภัณฑ์และลบพื้นหลังหากมีภาพพื้นหลัง
     if background_file is not None:
-        background_image = Image.open(background_file)
-        background_image = resize_image(background_image)
+        background_image = load_image(background_file)
+        background_image = resize_image(Image.fromarray(background_image))
         background_array = np.array(background_image)
         
-        # ตรวจจับบรรจุภัณฑ์โดยหาความแตกต่างและคำนวณพื้นที่บรรจุภัณฑ์
+        # ตรวจจับบรรจุภัณฑ์และคำนวณพื้นที่บรรจุภัณฑ์
         package_detected, total_pixels = detect_package(background_array, package_array)
         st.image(package_detected, caption="บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
     else:
-        # หากไม่มีพื้นหลัง ใช้ภาพทั้งหมดในการตรวจจับเศษอาหารและคำนวณพิกเซลในภาพทั้งหมด
         package_detected = package_array
         total_pixels = cv2.countNonZero(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY))
         st.image(package_detected, caption="ภาพที่มีบรรจุภัณฑ์", use_column_width=True)
