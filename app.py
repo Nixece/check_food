@@ -16,26 +16,53 @@ def detect_packaging(image):
     image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
 
     # ใช้ Gaussian Blur เพื่อลด noise
-    blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
+    blurred_image = cv2.GaussianBlur(image_gray, (7, 7), 0)
 
     # ใช้ Canny edge detection เพื่อตรวจจับขอบของบรรจุภัณฑ์
-    edges = cv2.Canny(blurred_image, 100, 200)
+    edges = cv2.Canny(blurred_image, 50, 150)
+
+    # ใช้การแปลง Morphological เพื่อลบ noise เพิ่มเติม
+    kernel = np.ones((5, 5), np.uint8)
+    edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
     # ค้นหา Contours สำหรับบรรจุภัณฑ์
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # ตรวจจับ Contour ที่ใหญ่ที่สุดเพื่อเป็นบรรจุภัณฑ์
-    largest_contour = max(contours, key=cv2.contourArea)
+    # ตรวจจับ Contour ที่ใหญ่ที่สุดที่มีรูปร่างเป็นสี่เหลี่ยมหรือวงกลม
+    largest_contour = None
+    max_area = 0
 
-    # สร้าง mask สำหรับพื้นที่บรรจุภัณฑ์ที่ตรวจพบ
-    mask = np.zeros_like(image_gray)
-    cv2.drawContours(mask, [largest_contour], -1, 255, thickness=cv2.FILLED)
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > max_area:
+            # ตรวจสอบว่า Contour มีรูปร่างเป็นสี่เหลี่ยมหรือวงกลม
+            epsilon = 0.05 * cv2.arcLength(contour, True)
+            approx = cv2.approxPolyDP(contour, epsilon, True)
+            
+            if len(approx) == 4:  # ถ้ามี 4 จุดแสดงว่าเป็นสี่เหลี่ยม
+                largest_contour = contour
+                max_area = area
+            else:
+                # ตรวจสอบความกลม (circularity) สำหรับวงกลม
+                perimeter = cv2.arcLength(contour, True)
+                if perimeter > 0:
+                    circularity = 4 * np.pi * (area / (perimeter ** 2))
+                    if 0.7 < circularity < 1.3:  # ถ้าค่าความกลมใกล้เคียง 1 ถือว่าเป็นวงกลม
+                        largest_contour = contour
+                        max_area = area
 
-    # วาด Contour บรรจุภัณฑ์ที่ตรวจพบลงบนภาพ
-    packaging_detected = image_array.copy()
-    cv2.drawContours(packaging_detected, [largest_contour], -1, (0, 255, 0), 2)
+    # ตรวจจับพื้นที่บรรจุภัณฑ์
+    if largest_contour is not None:
+        mask = np.zeros_like(image_gray)
+        cv2.drawContours(mask, [largest_contour], -1, 255, thickness=cv2.FILLED)
 
-    return mask, packaging_detected
+        # วาดขอบเขตบรรจุภัณฑ์บนภาพ
+        packaging_detected = image_array.copy()
+        cv2.drawContours(packaging_detected, [largest_contour], -1, (0, 255, 0), 2)
+
+        return mask, packaging_detected
+    else:
+        return None, None
 
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
 def check_food_waste_auto(image, packaging_mask):
@@ -106,22 +133,26 @@ if uploaded_file is not None:
 
     # ตรวจจับบรรจุภัณฑ์
     packaging_mask, packaging_img = detect_packaging(image)
-    st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
+    
+    if packaging_mask is not None:
+        st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
 
-    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed, waste_img = check_food_waste_auto(image, packaging_mask)
-    st.write(result)
+        # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
+        result, passed, waste_img = check_food_waste_auto(image, packaging_mask)
+        st.write(result)
 
-    # แสดงภาพเศษอาหารที่ตรวจจับได้
-    if waste_img is not None:
-        st.image(waste_img, caption="พื้นที่เศษอาหารที่ตรวจจับได้", use_column_width=True)
+        # แสดงภาพเศษอาหารที่ตรวจจับได้
+        if waste_img is not None:
+            st.image(waste_img, caption="พื้นที่เศษอาหารที่ตรวจจับได้", use_column_width=True)
 
-    # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
-    if passed:
-        st.success("บรรจุภัณฑ์นี้ไม่เหลือเศษอาหาร รับ 10 คะแนน!")
-        
-        # สร้าง QR Code ที่มีข้อมูลเฉพาะ
-        qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
-        
-        # แสดง QR Code
-        st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
+        # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
+        if passed:
+            st.success("บรรจุภัณฑ์นี้ไม่เหลือเศษอาหาร รับ 10 คะแนน!")
+            
+            # สร้าง QR Code ที่มีข้อมูลเฉพาะ
+            qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
+            
+            # แสดง QR Code
+            st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
+    else:
+        st.error("ไม่สามารถตรวจจับบรรจุภัณฑ์ได้")
