@@ -6,7 +6,7 @@ from PIL import ImageOps
 import qrcode
 import io
 
-# ฟังก์ชันย่อขนาดภาพให้เล็กลงสำหรับการประมวลผลเร็วขึ้น
+# ฟังก์ชันย่อขนาดภาพ
 def resize_image(image, max_size=(300, 300)):
     return ImageOps.contain(image, max_size)
 
@@ -23,7 +23,10 @@ def color_difference(color1, color2):
 def get_edge_color_average(image, mask):
     edges = cv2.Canny(mask, 100, 200)
     edge_pixels = image[edges > 0]
-    return np.mean(edge_pixels, axis=0) if len(edge_pixels) > 0 else np.array([0, 0, 0])
+    if len(edge_pixels) > 0:
+        return np.mean(edge_pixels, axis=0)
+    else:
+        return np.array([0, 0, 0])  # เผื่อไว้ในกรณีที่ไม่มีพิกเซลที่ขอบ
 
 # ฟังก์ชันหาความแตกต่างระหว่างพื้นหลังและบรรจุภัณฑ์
 def detect_package(background, package_image):
