@@ -38,16 +38,9 @@ def detect_packaging(image):
             epsilon = 0.05 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
             
-            if len(approx) == 4:  # ถ้ามี 4 จุดแสดงว่าเป็นสี่เหลี่ยม
+            if len(approx) == 4 or len(approx) > 6:  # ปรับให้สามารถตรวจจับได้ทั้งสี่เหลี่ยมหรือวงกลม
                 largest_contour = contour
                 max_area = area
-            else:
-                perimeter = cv2.arcLength(contour, True)
-                if perimeter > 0:
-                    circularity = 4 * np.pi * (area / (perimeter ** 2))
-                    if 0.7 < circularity < 1.3:  # ถ้าค่าความกลมใกล้เคียง 1 ถือว่าเป็นวงกลม
-                        largest_contour = contour
-                        max_area = area
 
     # ตรวจจับพื้นที่บรรจุภัณฑ์
     if largest_contour is not None:
@@ -72,29 +65,27 @@ def check_food_waste_auto(image, packaging_mask):
         # ใช้ Mask ของบรรจุภัณฑ์เพื่อให้เหลือเฉพาะพื้นที่บรรจุภัณฑ์
         masked_image = cv2.bitwise_and(image_gray, image_gray, mask=packaging_mask)
 
-        # ใช้ Gaussian Blur เพื่อลด noise
-        blurred_image = cv2.GaussianBlur(masked_image, (5, 5), 0)
-
-        # ใช้ Canny edge detection เพื่อเน้นขอบของเศษอาหาร
-        edges = cv2.Canny(blurred_image, 30, 100)
-
-        # การแปลง Morphological เพื่อเพิ่มความแม่นยำในการตรวจจับเศษอาหาร
+        # ใช้การแปลง Morphological เพื่อลบ noise และเพิ่มความแม่นยำในการตรวจจับเศษอาหาร
         kernel = np.ones((3, 3), np.uint8)
-        edges = cv2.dilate(edges, kernel, iterations=1)
+        opened_image = cv2.morphologyEx(masked_image, cv2.MORPH_OPEN, kernel)
+        blurred_image = cv2.GaussianBlur(opened_image, (3, 3), 0)
 
         # ใช้ Adaptive Threshold เพื่อตรวจจับเศษอาหาร
-        threshold_image = cv2.adaptiveThreshold(edges, 255, 
+        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
                                                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                 cv2.THRESH_BINARY_INV, 11, 2)
 
+        # ใช้การ dilate เพื่อเน้นเศษอาหารให้ชัดเจนขึ้น
+        dilated = cv2.dilate(threshold_image, kernel, iterations=1)
+
         # ค้นหา Contours สำหรับเศษอาหาร
-        contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         waste_pixels = 0
         waste_detected = image_array.copy()
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area < 20:  # กำหนดพื้นที่ขั้นต่ำเพื่อตัด Noise ออก
+            if area < 15:  # ลดพื้นที่ขั้นต่ำเพื่อตรวจจับเศษอาหารขนาดเล็ก
                 continue
 
             # ตรวจสอบว่าเศษอาหารอยู่ในพื้นที่บรรจุภัณฑ์โดยดูจาก packaging_mask
@@ -102,13 +93,13 @@ def check_food_waste_auto(image, packaging_mask):
                 x, y = point[0]
                 if packaging_mask[y, x] == 255:  # ตรวจสอบว่าอยู่ในพื้นที่บรรจุภัณฑ์หรือไม่
                     waste_pixels += area
-                    cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
-                    break  # ออกจากลูปเมื่อพบว่า contour นี้เป็นเศษอาหารที่อยู่ในบรรจุภัณฑ์
+                    cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 1)
+                    break
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = cv2.countNonZero(packaging_mask)
         waste_ratio = waste_pixels / total_pixels if total_pixels > 0 else 0
-        waste_percentage = min(waste_ratio * 100, 100)  # จำกัดไม่ให้เกิน 100%
+        waste_percentage = min(waste_ratio * 100, 100)
 
         # แสดงผลลัพธ์
         if waste_ratio < 0.05:
