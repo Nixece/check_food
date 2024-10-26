@@ -2,4 +2,4 @@ streamlit
 opencv-python-headless
 Pillow
 numpy
-qrcode
+qrcode[pil]
