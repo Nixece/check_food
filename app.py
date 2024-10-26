@@ -3,76 +3,80 @@ from PIL import Image
 import numpy as np
 import cv2
 from PIL import ImageOps
+import qrcode
+import io
 
 # ฟังก์ชันย่อขนาดภาพ
 def resize_image(image, max_size=(500, 500)):
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการตรวจจับขนาดบรรจุภัณฑ์โดยอัตโนมัติ
-def detect_package_size(image):
-    # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
-    image_array = np.array(image)
-    image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
-
-    # ใช้ Gaussian Blur เพื่อลด noise
-    blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
-
-    # ตรวจจับขอบของภาพโดยใช้ Canny Edge Detection
-    edges = cv2.Canny(blurred_image, 50, 150)
-
-    # ค้นหา Contours
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # หาพื้นที่ของ Contour ที่ใหญ่ที่สุด (ซึ่งน่าจะเป็นบรรจุภัณฑ์)
-    max_area = 0
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area > max_area:
-            max_area = area
-
-    # คืนค่าพื้นที่ของบรรจุภัณฑ์ (หน่วยเป็นพิกเซล)
-    return max_area
-
-# ฟังก์ชันสำหรับการตรวจจับเศษอาหารและคำนวณเปอร์เซ็นต์
-def check_food_waste_percentage(image):
+# ฟังก์ชันสำหรับการตรวจจับพื้นที่บรรจุภัณฑ์และเศษอาหาร
+def check_food_waste_auto(image):
     try:
-        # ตรวจจับขนาดบรรจุภัณฑ์โดยอัตโนมัติ
-        package_area = detect_package_size(image)
-
         # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
         image_array = np.array(image)
         image_gray = cv2.cvtColor(image_array, cv2.COLOR_RGB2GRAY)
 
         # ใช้ Gaussian Blur เพื่อลด noise
-        blurred_image = cv2.GaussianBlur(image_gray, (3, 3), 0)
+        blurred_image = cv2.GaussianBlur(image_gray, (5, 5), 0)
 
-        # ใช้ Adaptive Threshold เพื่อตรวจจับเศษอาหาร
-        threshold_image = cv2.adaptiveThreshold(blurred_image, 255,
+        # ใช้ Adaptive Threshold
+        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
                                                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                 cv2.THRESH_BINARY_INV, 11, 2)
 
-        # ค้นหา Contours ของเศษอาหาร
+        # ค้นหา Contours สำหรับบรรจุภัณฑ์ทั้งหมด
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+        # สำเนาภาพสำหรับวาดขอบเขตบรรจุภัณฑ์
+        packaging_detected = image_array.copy()
+
+        # หาพื้นที่บรรจุภัณฑ์ทั้งหมด
+        packaging_area = 0
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            packaging_area += area  # เก็บพื้นที่ของบรรจุภัณฑ์
+            cv2.drawContours(packaging_detected, [contour], -1, (0, 255, 0), 2)  # วาดขอบเขตบรรจุภัณฑ์
+
+        # สำเนาภาพสำหรับวาดขอบเขตเศษอาหาร
+        food_waste_detected = image_array.copy()
+
+        # ค้นหา Contours สำหรับเศษอาหาร
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area < 50:  # กรอง Contour เล็กๆ
+            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม
+            if area < 100:  # ใช้ค่า 100 แทนที่จะเป็น 150
                 continue
-            waste_pixels += area
+            waste_pixels += area  # เก็บพื้นที่ของเศษอาหาร
+            cv2.drawContours(food_waste_detected, [contour], -1, (0, 0, 255), 2)  # วาดขอบเขตเศษอาหาร
 
-        # คำนวณเปอร์เซ็นต์ของพื้นที่เศษอาหารเทียบกับบรรจุภัณฑ์
-        if package_area > 0:
-            food_remaining_percentage = (waste_pixels / package_area) * 100
+        # คำนวณสัดส่วนของเศษอาหารที่เหลือเทียบกับบรรจุภัณฑ์
+        waste_ratio = waste_pixels / packaging_area if packaging_area > 0 else 0
+        waste_percentage = waste_ratio * 100
+
+        # แสดงผลลัพธ์
+        if waste_ratio < 0.05:
+            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True, packaging_detected, food_waste_detected
         else:
-            food_remaining_percentage = 100  # หากไม่พบขนาดบรรจุภัณฑ์ ให้ตั้งค่าเป็น 100%
-
-        # แสดงผลลัพธ์เป็นเปอร์เซ็นต์ของพื้นที่เศษอาหาร
-        return f"เปอร์เซ็นต์พื้นที่เศษอาหารที่เหลือ: {food_remaining_percentage:.2f}%"
-
+            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False, packaging_detected, food_waste_detected
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
-        return "เกิดข้อผิดพลาด"
+        return "เกิดข้อผิดพลาด", False, None, None
+
+# ฟังก์ชันสำหรับการสร้าง QR Code
+def generate_qr_code(data):
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+    
+    # แปลงภาพ QR Code เป็นฟอร์แมตที่ Streamlit รองรับ
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    
+    return byte_im
 
 # ส่วนของการอัปโหลดภาพบรรจุภัณฑ์
 st.title('Food Waste Detection (Automatic)')
@@ -85,6 +89,24 @@ if uploaded_file is not None:
     image = resize_image(image)
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
-    # ประเมินว่าอาหารเหลืออยู่เท่าไหร่โดยใช้เปอร์เซ็นต์ของพื้นที่เศษอาหาร
-    result = check_food_waste_percentage(image)
+    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
+    result, passed, packaging_img, waste_img = check_food_waste_auto(image)
     st.write(result)
+
+    # แสดงภาพบรรจุภัณฑ์ที่ตรวจจับได้
+    if packaging_img is not None:
+        st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
+
+    # แสดงภาพเศษอาหารที่ตรวจจับได้
+    if waste_img is not None:
+        st.image(waste_img, caption="พื้นที่เศษอาหารที่ตรวจจับได้", use_column_width=True)
+
+    # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
+    if passed:
+        st.success("บรรจุภัณฑ์นี้ไม่เหลือเศษอาหาร รับ 10 คะแนน!")
+        
+        # สร้าง QR Code ที่มีข้อมูลเฉพาะ
+        qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
+        
+        # แสดง QR Code
+        st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
