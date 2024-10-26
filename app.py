@@ -89,13 +89,16 @@ def check_food_waste_auto(image, packaging_mask):
         waste_detected = image_array.copy()
         for contour in contours:
             area = cv2.contourArea(contour)
-            # ตรวจสอบว่าเศษอาหารอยู่ภายในพื้นที่บรรจุภัณฑ์
             if area < 20:  # กำหนดพื้นที่ขั้นต่ำเพื่อตัด Noise ออก
                 continue
-            # ตรวจสอบว่าเศษอาหารอยู่ในพื้นที่บรรจุภัณฑ์
-            if cv2.pointPolygonTest(packaging_mask, tuple(contour[0][0]), False) >= 0:
-                waste_pixels += area
-                cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
+
+            # ตรวจสอบว่าเศษอาหารอยู่ในพื้นที่บรรจุภัณฑ์โดยดูจาก packaging_mask
+            for point in contour:
+                x, y = point[0]
+                if packaging_mask[y, x] == 255:  # ตรวจสอบว่าอยู่ในพื้นที่บรรจุภัณฑ์หรือไม่
+                    waste_pixels += area
+                    cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
+                    break  # ออกจากลูปเมื่อพบว่า contour นี้เป็นเศษอาหารที่อยู่ในบรรจุภัณฑ์
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = cv2.countNonZero(packaging_mask)
@@ -158,6 +161,4 @@ if uploaded_file is not None:
             qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
             
             # แสดง QR Code
-            st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
-    else:
-        st.error("ไม่สามารถตรวจจับบรรจุภัณฑ์ได้")
+            st.image(qr_code_image
