@@ -35,7 +35,6 @@ def detect_packaging(image):
     for contour in contours:
         area = cv2.contourArea(contour)
         if area > max_area:
-            # ตรวจสอบว่า Contour มีรูปร่างเป็นสี่เหลี่ยมหรือวงกลม
             epsilon = 0.05 * cv2.arcLength(contour, True)
             approx = cv2.approxPolyDP(contour, epsilon, True)
             
@@ -43,7 +42,6 @@ def detect_packaging(image):
                 largest_contour = contour
                 max_area = area
             else:
-                # ตรวจสอบความกลม (circularity) สำหรับวงกลม
                 perimeter = cv2.arcLength(contour, True)
                 if perimeter > 0:
                     circularity = 4 * np.pi * (area / (perimeter ** 2))
@@ -77,8 +75,15 @@ def check_food_waste_auto(image, packaging_mask):
         # ใช้ Gaussian Blur เพื่อลด noise
         blurred_image = cv2.GaussianBlur(masked_image, (5, 5), 0)
 
+        # ใช้ Canny edge detection เพื่อเน้นขอบของเศษอาหาร
+        edges = cv2.Canny(blurred_image, 30, 100)
+
+        # การแปลง Morphological เพื่อเพิ่มความแม่นยำในการตรวจจับเศษอาหาร
+        kernel = np.ones((3, 3), np.uint8)
+        edges = cv2.dilate(edges, kernel, iterations=1)
+
         # ใช้ Adaptive Threshold เพื่อตรวจจับเศษอาหาร
-        threshold_image = cv2.adaptiveThreshold(blurred_image, 255, 
+        threshold_image = cv2.adaptiveThreshold(edges, 255, 
                                                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                 cv2.THRESH_BINARY_INV, 11, 2)
 
