@@ -31,7 +31,11 @@ def detect_packaging(image):
     mask = np.zeros_like(image_gray)
     cv2.drawContours(mask, [largest_contour], -1, 255, thickness=cv2.FILLED)
 
-    return mask
+    # วาด Contour บรรจุภัณฑ์ที่ตรวจพบลงบนภาพ
+    packaging_detected = image_array.copy()
+    cv2.drawContours(packaging_detected, [largest_contour], -1, (0, 255, 0), 2)
+
+    return mask, packaging_detected
 
 # ฟังก์ชันสำหรับการตรวจจับเศษอาหารในบรรจุภัณฑ์
 def check_food_waste_auto(image, packaging_mask):
@@ -52,12 +56,14 @@ def check_food_waste_auto(image, packaging_mask):
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         waste_pixels = 0
+        waste_detected = image_array.copy()
         for contour in contours:
             area = cv2.contourArea(contour)
             # ตรวจสอบว่าเศษอาหารอยู่ภายในพื้นที่บรรจุภัณฑ์
             if area < 100 or cv2.pointPolygonTest(packaging_mask, tuple(contour[0][0]), False) < 0:
                 continue
             waste_pixels += area
+            cv2.drawContours(waste_detected, [contour], -1, (0, 0, 255), 2)
 
         # คำนวณสัดส่วนของเศษอาหารที่เหลือ
         total_pixels = cv2.countNonZero(packaging_mask)
@@ -66,12 +72,12 @@ def check_food_waste_auto(image, packaging_mask):
 
         # แสดงผลลัพธ์
         if waste_ratio < 0.05:
-            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True
+            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True, waste_detected
         else:
-            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False
+            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False, waste_detected
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
-        return "เกิดข้อผิดพลาด", False
+        return "เกิดข้อผิดพลาด", False, None
 
 # ฟังก์ชันสำหรับการสร้าง QR Code
 def generate_qr_code(data):
@@ -99,11 +105,16 @@ if uploaded_file is not None:
     st.image(image, caption="ภาพบรรจุภัณฑ์", use_column_width=True)
 
     # ตรวจจับบรรจุภัณฑ์
-    packaging_mask = detect_packaging(image)
+    packaging_mask, packaging_img = detect_packaging(image)
+    st.image(packaging_img, caption="พื้นที่บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
 
     # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed = check_food_waste_auto(image, packaging_mask)
+    result, passed, waste_img = check_food_waste_auto(image, packaging_mask)
     st.write(result)
+
+    # แสดงภาพเศษอาหารที่ตรวจจับได้
+    if waste_img is not None:
+        st.image(waste_img, caption="พื้นที่เศษอาหารที่ตรวจจับได้", use_column_width=True)
 
     # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
     if passed:
