@@ -10,7 +10,7 @@ import io
 def resize_image(image, max_size=(500, 500)):
     return ImageOps.contain(image, max_size)
 
-# ฟังก์ชันสำหรับการตรวจจับพื้นที่บรรจุภัณฑ์และเศษอาหาร
+# ฟังก์ชันสำหรับการตรวจจับพื้นที่บรรจุภัณฑ์ที่ใหญ่ที่สุดและเศษอาหาร
 def check_food_waste_auto(image):
     try:
         # แปลงภาพเป็น numpy array และแปลงเป็นภาพขาวดำ
@@ -25,18 +25,18 @@ def check_food_waste_auto(image):
                                                 cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                                 cv2.THRESH_BINARY_INV, 11, 2)
 
-        # ค้นหา Contours สำหรับบรรจุภัณฑ์ทั้งหมด
+        # ค้นหา Contours ทั้งหมด
         contours, _ = cv2.findContours(threshold_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # สำเนาภาพสำหรับวาดขอบเขตบรรจุภัณฑ์
-        packaging_detected = image_array.copy()
+        # ตรวจจับ Contour ที่ใหญ่ที่สุดเพื่อเป็นบรรจุภัณฑ์
+        largest_contour = max(contours, key=cv2.contourArea)
 
-        # หาพื้นที่บรรจุภัณฑ์ทั้งหมด
-        packaging_area = 0
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            packaging_area += area  # เก็บพื้นที่ของบรรจุภัณฑ์
-            cv2.drawContours(packaging_detected, [contour], -1, (0, 255, 0), 2)  # วาดขอบเขตบรรจุภัณฑ์
+        # สำเนาภาพสำหรับวาดขอบเขตบรรจุภัณฑ์ที่ใหญ่ที่สุด
+        packaging_detected = image_array.copy()
+        cv2.drawContours(packaging_detected, [largest_contour], -1, (0, 255, 0), 2)  # วาดขอบเขตบรรจุภัณฑ์ที่ใหญ่ที่สุด
+
+        # หาพื้นที่บรรจุภัณฑ์ที่ใหญ่ที่สุด
+        packaging_area = cv2.contourArea(largest_contour)
 
         # สำเนาภาพสำหรับวาดขอบเขตเศษอาหาร
         food_waste_detected = image_array.copy()
@@ -45,8 +45,8 @@ def check_food_waste_auto(image):
         waste_pixels = 0
         for contour in contours:
             area = cv2.contourArea(contour)
-            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม
-            if area < 100:  # ใช้ค่า 100 แทนที่จะเป็น 150
+            # ปรับเกณฑ์พื้นที่ที่ใช้กรองให้เหมาะสม (นับเฉพาะเศษอาหารที่ไม่ใช่บรรจุภัณฑ์ที่ใหญ่ที่สุด)
+            if area < 100 or contour is largest_contour:  # ข้ามบรรจุภัณฑ์ที่ใหญ่ที่สุด
                 continue
             waste_pixels += area  # เก็บพื้นที่ของเศษอาหาร
             cv2.drawContours(food_waste_detected, [contour], -1, (0, 0, 255), 2)  # วาดขอบเขตเศษอาหาร
