@@ -4,7 +4,7 @@ import streamlit as st
 from PIL import Image
 
 # ส่วนการอัปโหลดภาพ
-st.title("ตรวจจับบรรจุภัณฑ์อาหารจากรูปทรงสี่เหลี่ยมขอบมน")
+st.title("ตรวจจับบรรจุภัณฑ์จากรูปทรงสี่เหลี่ยม (ขอบโค้งมนหรือเหลี่ยม)")
 
 uploaded_file = st.file_uploader("อัปโหลดภาพที่ต้องการตรวจสอบ", type=["jpg", "jpeg", "png"])
 
@@ -24,21 +24,23 @@ if uploaded_file is not None:
     # ค้นหา Contours
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # วาดกรอบสี่เหลี่ยมขอบมนรอบ Contours ที่มีลักษณะเป็นสี่เหลี่ยมขอบมน
+    # วาดกรอบรอบ Contours ที่มีลักษณะใกล้เคียงสี่เหลี่ยม (ขอบมนหรือเหลี่ยม)
     for contour in contours:
-        # Approximate contour เพื่อหาโครงสร้างที่มีลักษณะโค้งมนเล็กน้อย
-        approx = cv2.approxPolyDP(contour, 0.04 * cv2.arcLength(contour, True), True)
-        
-        # ตรวจสอบจำนวนจุดใน contour ที่มีลักษณะคล้ายสี่เหลี่ยม
-        if len(approx) >= 4 and cv2.isContourConvex(approx):
-            x, y, w, h = cv2.boundingRect(approx)
-            aspect_ratio = w / float(h)
-            
-            # กรองเฉพาะที่มีอัตราส่วนใกล้เคียงกับสี่เหลี่ยมและมีขนาดใหญ่พอสมควร
-            if 0.8 <= aspect_ratio <= 1.2 and w > 50 and h > 50:
-                # วาดกรอบสี่เหลี่ยมที่ขอบมนรอบ contour ที่ตรวจพบ
-                cv2.rectangle(image_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # ใช้ bounding box ที่มีขอบมนรองรับการเบี้ยวเพื่อครอบ contour
+        rect = cv2.minAreaRect(contour)
+        box = cv2.boxPoints(rect)
+        box = np.int0(box)  # แปลงเป็นจำนวนเต็ม
+
+        # คำนวณอัตราส่วนความกว้างต่อความสูงของ bounding box
+        w, h = rect[1]
+        if w > 0 and h > 0:
+            aspect_ratio = max(w, h) / min(w, h)
+
+            # กรองเฉพาะวัตถุที่มีอัตราส่วนใกล้เคียงกับสี่เหลี่ยมและมีขนาดใหญ่พอสมควร
+            if 0.5 <= aspect_ratio <= 2.0 and max(w, h) > 50:
+                # วาดกรอบสี่เหลี่ยมที่ขอบมนหรือเหลี่ยมรอบ contour ที่ตรวจพบ
+                cv2.drawContours(image_bgr, [box], 0, (0, 255, 0), 2)
 
     # แปลงกลับเป็น RGB เพื่อแสดงใน Streamlit
     image_result = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์ที่มีลักษณะขอบมน", use_column_width=True)
+    st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์ที่มีลักษณะขอบโค้งมนหรือเหลี่ยม", use_column_width=True)
