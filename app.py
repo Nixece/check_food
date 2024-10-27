@@ -60,8 +60,8 @@ if uploaded_file is not None:
             class_id = np.argmax(scores)
             confidence = scores[class_id]
 
-            # ตรวจจับเฉพาะประเภทที่อาจเป็นกล่องบรรจุภัณฑ์อาหาร เช่น กล่องพลาสติกหรือกล่องโฟม (cup, bowl)
-            if confidence > 0.5 and classes[class_id] in ["cup", "bowl"]:
+            # ตรวจจับเฉพาะประเภทที่อาจเป็นบรรจุภัณฑ์อาหาร เช่น กล่องพลาสติกหรือกล่องโฟม (cup, bowl)
+            if confidence > 0.3 and classes[class_id] in ["cup", "bowl", "dining table"]:
                 center_x = int(detection[0] * width)
                 center_y = int(detection[1] * height)
                 w = int(detection[2] * width)
@@ -69,23 +69,28 @@ if uploaded_file is not None:
                 x = int(center_x - w / 2)
                 y = int(center_y - h / 2)
 
-                boxes.append([x, y, w, h])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
+                # ตรวจสอบว่าเป็นวัตถุสี่เหลี่ยม (เช่นกล่อง)
+                if 0.8 <= w / h <= 1.2:  # อัตราส่วนความกว้างและความสูงต้องใกล้เคียงกับสี่เหลี่ยมจัตุรัส
+                    boxes.append([x, y, w, h])
+                    confidences.append(float(confidence))
+                    class_ids.append(class_id)
 
     # การกรองกล่องที่ทับซ้อนกัน
     indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
 
-    # วาดกรอบที่ตรวจพบและแสดงผล
-    for i in indices:
-        i = i[0]
-        box = boxes[i]
-        x, y, w, h = box
-        label = str(classes[class_ids[i]])
-        confidence = confidences[i]
-        color = (0, 255, 0)
-        cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
-        cv2.putText(image, f"{label} {int(confidence * 100)}%", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    if len(indices) > 0:
+        # วาดกรอบที่ตรวจพบและแสดงผล
+        for i in indices:
+            i = i[0]
+            box = boxes[i]
+            x, y, w, h = box
+            label = str(classes[class_ids[i]])
+            confidence = confidences[i]
+            color = (0, 255, 0)
+            cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(image, f"{label} {int(confidence * 100)}%", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    else:
+        st.write("ไม่พบวัตถุที่ตรงกับบรรจุภัณฑ์อาหารในภาพที่อัปโหลด")
 
     # แปลงกลับเป็น RGB และแสดงผลใน Streamlit
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
