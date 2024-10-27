@@ -25,7 +25,7 @@ download_file(coco_names_url, "coco.names")
 # โหลดโมเดล YOLO Tiny
 net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
 layer_names = net.getLayerNames()
-output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
+output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 
 # โหลดคลาสจากไฟล์ coco.names
 with open("coco.names", "r") as f:
