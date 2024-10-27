@@ -31,6 +31,9 @@ with open("coco.names", "r") as f:
 
 # โหลดภาพที่ต้องการตรวจสอบ
 image = cv2.imread("image.jpg")  # เปลี่ยนชื่อไฟล์ตามที่ต้องการ
+if image is None:
+    raise FileNotFoundError("ไม่พบไฟล์ image.jpg กรุณาตรวจสอบชื่อไฟล์หรือที่อยู่ของไฟล์ให้ถูกต้อง")
+
 height, width, channels = image.shape
 
 # เตรียมภาพสำหรับ YOLO
