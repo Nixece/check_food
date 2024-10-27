@@ -1,142 +1,84 @@
-import streamlit as st
-from PIL import Image
-import numpy as np
+import os
+import urllib.request
 import cv2
-from PIL import ImageOps
-import qrcode
-import io
+import numpy as np
 
-# ฟังก์ชันย่อขนาดภาพให้เล็กลงสำหรับการประมวลผลเร็วขึ้น
-def resize_image(image, max_size=(300, 300)):
-    return ImageOps.contain(image, max_size)
+# ฟังก์ชันสำหรับดาวน์โหลดไฟล์ถ้ายังไม่มีอยู่
+def download_file(url, file_name):
+    if not os.path.isfile(file_name):
+        print(f"กำลังดาวน์โหลด {file_name} ...")
+        urllib.request.urlretrieve(url, file_name)
+        print(f"ดาวน์โหลด {file_name} เสร็จสิ้นแล้ว")
 
-# ใช้ caching เพื่อเร่งความเร็วในการแปลงภาพเป็น numpy array
-@st.cache_data
-def load_image(image_file):
-    return np.array(Image.open(image_file))
+# URLs ของไฟล์ YOLO ที่ต้องการ
+yolo_weights_url = "https://pjreddie.com/media/files/yolov3.weights"
+yolo_cfg_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
+coco_names_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
 
-# ฟังก์ชันหาค่าความแตกต่างของสี
-def color_difference(color1, color2):
-    return np.sqrt(np.sum((color1 - color2) ** 2))
+# ดาวน์โหลดไฟล์ YOLO
+download_file(yolo_weights_url, "yolov3.weights")
+download_file(yolo_cfg_url, "yolov3.cfg")
+download_file(coco_names_url, "coco.names")
 
-# ฟังก์ชันหาสีเฉลี่ยจากขอบของบรรจุภัณฑ์
-def get_edge_color_average(image, mask):
-    edges = cv2.Canny(mask, 100, 200)
-    edge_pixels = image[edges > 0]
-    return np.mean(edge_pixels, axis=0)
+# โหลด YOLO ที่ฝึกมาแล้ว
+net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
+layer_names = net.getLayerNames()
+output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 
-# ฟังก์ชันหาความแตกต่างระหว่างพื้นหลังและบรรจุภัณฑ์
-def detect_package(background, package_image):
-    background_gray = cv2.cvtColor(background, cv2.COLOR_RGB2GRAY)
-    package_gray = cv2.cvtColor(package_image, cv2.COLOR_RGB2GRAY)
-    
-    # หาความแตกต่างระหว่างภาพพื้นหลังและภาพบรรจุภัณฑ์
-    diff = cv2.absdiff(background_gray, package_gray)
-    _, mask = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
-    
-    # กรอง Contours เล็ก ๆ ออก
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    for contour in contours:
-        area = cv2.contourArea(contour)
-        if area < 500:  # กรองพื้นที่ขนาดเล็กออก
-            cv2.drawContours(mask, [contour], -1, 0, thickness=cv2.FILLED)
-    
-    # ลบพื้นหลังออกจากบรรจุภัณฑ์
-    package_detected = cv2.bitwise_and(package_image, package_image, mask=mask)
-    
-    # คำนวณพื้นที่บรรจุภัณฑ์จากภาพที่เหลืออยู่หลังลบพื้นหลัง
-    total_pixels = cv2.countNonZero(mask)
-    
-    return package_detected, total_pixels, mask
+# โหลดคลาสจากไฟล์ coco.names
+with open("coco.names", "r") as f:
+    classes = [line.strip() for line in f.readlines()]
 
-# ฟังก์ชันสำหรับตรวจจับเศษอาหารโดยใช้สีขอบบรรจุภัณฑ์เป็นตัวเทียบ
-def check_food_waste_auto(image, mask, edge_color):
-    try:
-        # แปลงภาพเป็น RGB เพื่อเปรียบเทียบสี
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+# โหลดภาพที่ต้องการตรวจสอบ
+image = cv2.imread("image.jpg")  # เปลี่ยนชื่อไฟล์ตามที่ต้องการ
+height, width, channels = image.shape
+
+# เตรียมภาพสำหรับ YOLO
+blob = cv2.dnn.blobFromImage(image, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
+net.setInput(blob)
+outs = net.forward(output_layers)
+
+# ประมวลผลผลลัพธ์
+class_ids = []
+confidences = []
+boxes = []
+
+for out in outs:
+    for detection in out:
+        scores = detection[5:]
+        class_id = np.argmax(scores)
+        confidence = scores[class_id]
         
-        # ตรวจสอบพิกเซลใน Mask ที่แตกต่างจากสีขอบ
-        threshold = 30  # กำหนดเกณฑ์ความแตกต่างของสี
-        food_waste_mask = np.zeros_like(mask)
-        
-        for y in range(image_rgb.shape[0]):
-            for x in range(image_rgb.shape[1]):
-                if mask[y, x] > 0:  # ตรวจเฉพาะพิกเซลในพื้นที่บรรจุภัณฑ์
-                    pixel_color = image_rgb[y, x]
-                    if color_difference(pixel_color, edge_color) > threshold:
-                        food_waste_mask[y, x] = 255
-        
-        # คำนวณจำนวนพิกเซลของเศษอาหาร
-        waste_pixels = cv2.countNonZero(food_waste_mask)
-        
-        # คำนวณเปอร์เซ็นต์ของเศษอาหาร
-        waste_ratio = waste_pixels / cv2.countNonZero(mask)
-        waste_percentage = waste_ratio * 100
+        # กรองวัตถุตามความมั่นใจ
+        if confidence > 0.5:
+            if classes[class_id] == "bottle" or classes[class_id] == "box":  # ตัวอย่างสำหรับบรรจุภัณฑ์
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
 
-        if waste_ratio < 0.05:
-            return f"บรรจุภัณฑ์ไม่เหลืออาหารเลย ({waste_percentage:.2f}%)", True
-        else:
-            return f"ยังเหลืออาหารอยู่ ({waste_percentage:.2f}%)", False
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการคำนวณเศษอาหาร: {e}")
-        return "เกิดข้อผิดพลาด", False
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
 
-# ฟังก์ชันสำหรับการสร้าง QR Code
-def generate_qr_code(data):
-    qr = qrcode.QRCode(version=1, box_size=10, border=5)
-    qr.add_data(data)
-    qr.make(fit=True)
-    img = qr.make_image(fill='black', back_color='white')
-    
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    byte_im = buf.getvalue()
-    
-    return byte_im
+# การกรองกล่องที่ทับซ้อนกัน
+indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
 
-# ส่วนของการอัปโหลดภาพพื้นหลังและบรรจุภัณฑ์
-st.title('Food Waste Detection (Automatic)')
+# วาดกรอบที่ตรวจพบและแสดงผล
+for i in indices:
+    i = i[0]
+    box = boxes[i]
+    x, y, w, h = box
+    label = str(classes[class_ids[i]])
+    confidence = confidences[i]
+    color = (0, 255, 0)  # สีของกรอบ
 
-st.write("กรุณาอัปโหลดภาพพื้นหลัง (ถ้ามี)")
-background_file = st.file_uploader("เลือกภาพพื้นหลัง", type=["jpg", "png", "jpeg"], key="background")
+    cv2.rectangle(image, (x, y), (x + w, y + h), color, 2)
+    cv2.putText(image, f"{label} {int(confidence * 100)}%", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-st.write("กรุณาอัปโหลดภาพที่มีบรรจุภัณฑ์")
-package_file = st.file_uploader("เลือกภาพที่มีบรรจุภัณฑ์", type=["jpg", "png", "jpeg"], key="package")
-
-if package_file is not None:
-    package_image = load_image(package_file)
-    package_image = resize_image(Image.fromarray(package_image))
-    package_array = np.array(package_image)
-    
-    # ตรวจจับบรรจุภัณฑ์และลบพื้นหลังหากมีภาพพื้นหลัง
-    if background_file is not None:
-        background_image = load_image(background_file)
-        background_image = resize_image(Image.fromarray(background_image))
-        background_array = np.array(background_image)
-        
-        # ตรวจจับบรรจุภัณฑ์และคำนวณพื้นที่บรรจุภัณฑ์
-        package_detected, total_pixels, mask = detect_package(background_array, package_array)
-        st.image(package_detected, caption="บรรจุภัณฑ์ที่ตรวจจับได้", use_column_width=True)
-
-        # หาสีเฉลี่ยของขอบบรรจุภัณฑ์
-        edge_color = get_edge_color_average(package_array, mask)
-    else:
-        package_detected = package_array
-        total_pixels = cv2.countNonZero(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY))
-        mask = cv2.inRange(cv2.cvtColor(package_detected, cv2.COLOR_RGB2GRAY), 1, 255)
-        edge_color = get_edge_color_average(package_array, mask)
-        st.image(package_detected, caption="ภาพที่มีบรรจุภัณฑ์", use_column_width=True)
-
-    # ประเมินว่ามีเศษอาหารเหลืออยู่หรือไม่โดยอัตโนมัติ
-    result, passed = check_food_waste_auto(package_detected, mask, edge_color)
-    st.write(result)
-
-    # หากผ่านการตรวจสอบว่าไม่เหลืออาหาร
-    if passed:
-        st.success("บรรจุภัณฑ์นี้ไม่เหลือเศษอาหาร รับ 10 คะแนน!")
-        
-        # สร้าง QR Code ที่มีข้อมูลเฉพาะ
-        qr_code_image = generate_qr_code("รหัสบรรจุภัณฑ์นี้สำหรับสะสม 10 คะแนน")
-        
-        # แสดง QR Code
-        st.image(qr_code_image, caption="QR Code สำหรับสะสมแต้ม", use_column_width=False)
+# แสดงภาพ
+cv2.imshow("Image", image)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
