@@ -29,7 +29,7 @@ if uploaded_file is not None:
         # ใช้ bounding box ที่มีขอบมนรองรับการเบี้ยวเพื่อครอบ contour
         rect = cv2.minAreaRect(contour)
         box = cv2.boxPoints(rect)
-        box = np.int0(box)  # แปลงเป็นจำนวนเต็ม
+        box = np.int32(box)  # แปลงเป็นจำนวนเต็ม
 
         # คำนวณอัตราส่วนความกว้างต่อความสูงของ bounding box
         w, h = rect[1]
