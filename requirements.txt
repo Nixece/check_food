@@ -1,6 +1,2 @@
-streamlit
 opencv-python-headless
-Pillow
 numpy
-qrcode[pil]
-opencv-python
