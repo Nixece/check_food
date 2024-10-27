@@ -31,8 +31,10 @@ output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
 with open("coco.names", "r") as f:
     classes = [line.strip() for line in f.readlines()]
 
-# อัปโหลดภาพผ่าน Streamlit
-uploaded_file = st.file_uploader("อัปโหลดภาพจากอุปกรณ์ของคุณ", type=["jpg", "jpeg", "png"])
+# ส่วนการอัปโหลดภาพ
+st.title("ตรวจสอบบรรจุภัณฑ์อาหารจากมุมบน (Top View)")
+
+uploaded_file = st.file_uploader("อัปโหลดภาพจากมุมบนของบรรจุภัณฑ์อาหาร", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     # โหลดภาพจากการอัปโหลด
@@ -59,18 +61,18 @@ if uploaded_file is not None:
             class_id = np.argmax(scores)
             confidence = scores[class_id]
 
-            if confidence > 0.5:
-                if classes[class_id] == "bottle" or classes[class_id] == "box":
-                    center_x = int(detection[0] * width)
-                    center_y = int(detection[1] * height)
-                    w = int(detection[2] * width)
-                    h = int(detection[3] * height)
-                    x = int(center_x - w / 2)
-                    y = int(center_y - h / 2)
+            # ตรวจสอบว่าตรงกับประเภทบรรจุภัณฑ์อาหารหรือไม่
+            if confidence > 0.5 and classes[class_id] in ["bottle", "cup", "bowl", "dining table"]:
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * height)
+                w = int(detection[2] * width)
+                h = int(detection[3] * height)
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
 
-                    boxes.append([x, y, w, h])
-                    confidences.append(float(confidence))
-                    class_ids.append(class_id)
+                boxes.append([x, y, w, h])
+                confidences.append(float(confidence))
+                class_ids.append(class_id)
 
     # การกรองกล่องที่ทับซ้อนกัน
     indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
