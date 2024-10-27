@@ -4,7 +4,7 @@ import streamlit as st
 from PIL import Image
 
 # ส่วนการอัปโหลดภาพ
-st.title("ตรวจจับบรรจุภัณฑ์อาหารจากความแตกต่างของสี")
+st.title("ตรวจจับบรรจุภัณฑ์จากรูปทรงสี่เหลี่ยม")
 
 uploaded_file = st.file_uploader("อัปโหลดภาพที่ต้องการตรวจสอบ", type=["jpg", "jpeg", "png"])
 
@@ -14,32 +14,30 @@ if uploaded_file is not None:
     image_np = np.array(image)
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-    # แปลงภาพเป็น Grayscale เพื่อให้ตรวจจับขอบได้ง่ายขึ้น
+    # แปลงภาพเป็น Grayscale และใช้ GaussianBlur เพื่อลด noise
     gray_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray_image, (5, 5), 0)
 
-    # คำนวณค่าเฉลี่ยของสีในภาพเพื่อใช้เป็นสีพื้นหลัง
-    background_color = np.mean(gray_image)
+    # ตรวจจับขอบในภาพด้วย Canny edge detector
+    edges = cv2.Canny(blurred, 50, 150)
 
-    # ตรวจจับบริเวณที่มีสีแตกต่างจากพื้นหลัง
-    _, mask = cv2.threshold(gray_image, background_color - 20, 255, cv2.THRESH_BINARY_INV)
+    # ค้นหา Contours
+    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # ใช้การค้นหา Contours เพื่อหาโซนที่แตกต่างจากพื้นหลัง
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    # ค้นหา contour ที่มีพื้นที่มากที่สุด
-    max_area = 0
-    max_contour = None
+    # วาดกรอบสี่เหลี่ยมรอบ Contours ที่มีลักษณะเป็นสี่เหลี่ยม
     for contour in contours:
-        area = cv2.contourArea(contour)
-        if area > max_area:
-            max_area = area
-            max_contour = contour
-
-    # วาดกรอบสี่เหลี่ยมรอบบริเวณที่ใหญ่ที่สุด
-    if max_contour is not None:
-        x, y, w, h = cv2.boundingRect(max_contour)
-        cv2.rectangle(image_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Approximate contour เพื่อหาโครงสร้างที่เป็นสี่เหลี่ยม
+        approx = cv2.approxPolyDP(contour, 0.02 * cv2.arcLength(contour, True), True)
+        
+        # ตรวจสอบจำนวนจุดและลักษณะเป็นสี่เหลี่ยม
+        if len(approx) == 4:
+            x, y, w, h = cv2.boundingRect(approx)
+            aspect_ratio = w / float(h)
+            
+            # กรองให้แสดงเฉพาะที่มีอัตราส่วนใกล้เคียงกับสี่เหลี่ยม
+            if 0.8 <= aspect_ratio <= 1.2 and w > 50 and h > 50:
+                cv2.rectangle(image_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
     # แปลงกลับเป็น RGB เพื่อแสดงใน Streamlit
     image_result = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์ที่ใหญ่ที่สุด", use_column_width=True)
+    st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์ตามรูปทรง", use_column_width=True)
