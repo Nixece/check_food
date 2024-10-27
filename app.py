@@ -5,27 +5,27 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
-# ฟังก์ชันสำหรับดาวน์โหลดไฟล์ถ้ายังไม่มีอยู่
+# ฟังก์ชันสำหรับดาวน์โหลดไฟล์ YOLO
 def download_file(url, file_name):
     if not os.path.isfile(file_name):
         st.write(f"กำลังดาวน์โหลด {file_name} ...")
         urllib.request.urlretrieve(url, file_name)
         st.write(f"ดาวน์โหลด {file_name} เสร็จสิ้นแล้ว")
 
-# URLs ของไฟล์ YOLO ที่ต้องการ
-yolo_weights_url = "https://pjreddie.com/media/files/yolov3.weights"
-yolo_cfg_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3.cfg"
+# URLs ของไฟล์ YOLO Tiny
+yolo_weights_url = "https://pjreddie.com/media/files/yolov3-tiny.weights"
+yolo_cfg_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/cfg/yolov3-tiny.cfg"
 coco_names_url = "https://raw.githubusercontent.com/pjreddie/darknet/master/data/coco.names"
 
-# ดาวน์โหลดไฟล์ YOLO
-download_file(yolo_weights_url, "yolov3.weights")
-download_file(yolo_cfg_url, "yolov3.cfg")
+# ดาวน์โหลดโมเดล YOLO Tiny
+download_file(yolo_weights_url, "yolov3-tiny.weights")
+download_file(yolo_cfg_url, "yolov3-tiny.cfg")
 download_file(coco_names_url, "coco.names")
 
-# โหลด YOLO ที่ฝึกมาแล้ว
-net = cv2.dnn.readNet("yolov3.weights", "yolov3.cfg")
+# โหลดโมเดล YOLO Tiny
+net = cv2.dnn.readNet("yolov3-tiny.weights", "yolov3-tiny.cfg")
 layer_names = net.getLayerNames()
-output_layers = [layer_names[i - 1] for i in net.getUnconnectedOutLayers()]
+output_layers = [layer_names[i[0] - 1] for i in net.getUnconnectedOutLayers()]
 
 # โหลดคลาสจากไฟล์ coco.names
 with open("coco.names", "r") as f:
@@ -34,18 +34,17 @@ with open("coco.names", "r") as f:
 # ส่วนการอัปโหลดภาพ
 st.title("ตรวจสอบบรรจุภัณฑ์อาหารจากมุมบน (Top View)")
 
-uploaded_file = st.file_uploader("อัปโหลดภาพจากมุมบนของบรรจุภัณฑ์อาหาร", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("อัปโหลดภาพจากมุมบนของบรรจุภัณฑ์อาหาร (กล่องพลาสติก กล่องโฟม)", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
-    # โหลดภาพจากการอัปโหลด
     image = Image.open(uploaded_file)
     image = np.array(image)
 
     # แปลงภาพเป็น BGR สำหรับ OpenCV
     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-    # ประมวลผลภาพด้วย YOLO
-    height, width, channels = image.shape
+    # ประมวลผลภาพด้วย YOLO Tiny
+    height, width, _ = image.shape
     blob = cv2.dnn.blobFromImage(image, 0.00392, (416, 416), (0, 0, 0), True, crop=False)
     net.setInput(blob)
     outs = net.forward(output_layers)
@@ -61,8 +60,8 @@ if uploaded_file is not None:
             class_id = np.argmax(scores)
             confidence = scores[class_id]
 
-            # ตรวจสอบว่าตรงกับประเภทบรรจุภัณฑ์อาหารหรือไม่
-            if confidence > 0.5 and classes[class_id] in ["bottle", "cup", "bowl", "dining table"]:
+            # ตรวจจับเฉพาะประเภทที่อาจเป็นกล่องบรรจุภัณฑ์อาหาร เช่น กล่องพลาสติกหรือกล่องโฟม (cup, bowl)
+            if confidence > 0.5 and classes[class_id] in ["cup", "bowl"]:
                 center_x = int(detection[0] * width)
                 center_y = int(detection[1] * height)
                 w = int(detection[2] * width)
