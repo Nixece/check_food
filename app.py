@@ -26,12 +26,20 @@ if uploaded_file is not None:
     # ใช้การค้นหา Contours เพื่อหาโซนที่แตกต่างจากพื้นหลัง
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # วาดกรอบสี่เหลี่ยมรอบบริเวณที่แตกต่าง
+    # ค้นหา contour ที่มีพื้นที่มากที่สุด
+    max_area = 0
+    max_contour = None
     for contour in contours:
-        x, y, w, h = cv2.boundingRect(contour)
-        if w > 10 and h > 10:  # กรองเฉพาะพื้นที่ขนาดใหญ่กว่า 10x10 พิกเซล
-            cv2.rectangle(image_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        area = cv2.contourArea(contour)
+        if area > max_area:
+            max_area = area
+            max_contour = contour
+
+    # วาดกรอบสี่เหลี่ยมรอบบริเวณที่ใหญ่ที่สุด
+    if max_contour is not None:
+        x, y, w, h = cv2.boundingRect(max_contour)
+        cv2.rectangle(image_bgr, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
     # แปลงกลับเป็น RGB เพื่อแสดงใน Streamlit
     image_result = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์", use_column_width=True)
+    st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์ที่ใหญ่ที่สุด", use_column_width=True)
