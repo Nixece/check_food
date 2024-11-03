@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 import streamlit as st
 from PIL import Image
-import pyzbar.pyzbar as pyzbar  # ไลบรารีสำหรับตรวจจับ QR Code
 
 # ส่วนการอัปโหลดภาพ
 st.title("ตรวจจับ QR Code และบรรจุภัณฑ์จากรูปทรงสี่เหลี่ยม (ขอบโค้งมนหรือเหลี่ยม)")
@@ -15,14 +14,14 @@ if uploaded_file is not None:
     image_np = np.array(image).astype(np.uint8)  # แปลงเป็น numpy array และกำหนดประเภทข้อมูลเป็น uint8
     image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
 
-    # ตรวจจับ QR Code
-    decoded_objects = pyzbar.decode(image_bgr)
-    if decoded_objects:
+    # ตรวจจับ QR Code ด้วย OpenCV
+    qr_code_detector = cv2.QRCodeDetector()
+    data, points, _ = qr_code_detector.detectAndDecode(image_bgr)
+
+    if points is not None and data:
         # แสดงข้อมูล QR Code ที่ตรวจพบ
         st.write("พบ QR Code ในภาพ:")
-        for obj in decoded_objects:
-            qr_data = obj.data.decode('utf-8')  # ถอดรหัสข้อมูล QR
-            st.write(f"QR Code Data: {qr_data}")
+        st.write(f"QR Code Data: {data}")
     else:
         # ถ้าไม่พบ QR Code ให้ตรวจจับรูปทรงสี่เหลี่ยม
         st.write("ไม่พบ QR Code, กำลังตรวจจับรูปทรงสี่เหลี่ยม")
