@@ -1,58 +1,60 @@
-import cv2
-import numpy as np
 import streamlit as st
-from PIL import Image
 
-# ส่วนการอัปโหลดภาพ
-st.title("ตรวจจับ QR Code และบรรจุภัณฑ์จากรูปทรงสี่เหลี่ยม (ขอบโค้งมนหรือเหลี่ยม)")
+# ฟังก์ชันเพื่อแยกประเภทขยะ
+def classify_waste(item):
+    # สร้าง dictionary สำหรับประเภทขยะ
+    waste_types = {
+        "ขยะทั่วไป": [
+            "ถุงพลาสติก", "ขวดพลาสติกที่ใช้ครั้งเดียว", "ซองขนม", "ฟอยล์", "ถุงขนม", 
+            "หลอดพลาสติก", "เศษอาหารที่ไม่สามารถย่อยสลาย", "โฟม", "บรรจุภัณฑ์พลาสติก", "เทปกาว"
+        ],
+        "ขยะรีไซเคิล": [
+            "ขวดพลาสติก", "กระป๋อง", "กระดาษ", "กระดาษกล่อง", "ขวดแก้ว", 
+            "กระดาษหนังสือพิมพ์", "กล่องกระดาษ", "กระดาษทิชชูที่ไม่ใช้แล้ว", "ถุงรีไซเคิล"
+        ],
+        "ขยะเปียก": [
+            "เศษอาหาร", "เปลือกผลไม้", "ใบไม้", "อาหารเหลือ", "กาแฟที่เหลือ", 
+            "น้ำผลไม้ที่เหลือ", "ทิชชูเปียก", "เนื้อสัตว์", "กระดูก"
+        ]
+    }
 
-uploaded_file = st.file_uploader("อัปโหลดภาพที่ต้องการตรวจสอบ", type=["jpg", "jpeg", "png"])
+    # สร้างผลลัพธ์สำหรับขยะที่พบ
+    result = {"ขยะทั่วไป": [], "ขยะรีไซเคิล": [], "ขยะเปียก": []}
+    
+    # ถ้า item อยู่ในประเภทไหนก็เพิ่มไปใน dictionary
+    for waste_type, items in waste_types.items():
+        if item in items:
+            result[waste_type].append(item)
+    
+    return result
 
-if uploaded_file is not None:
-    # โหลดภาพจากการอัปโหลดและแปลงเป็น RGB
-    image = Image.open(uploaded_file).convert("RGB")  # แปลงภาพเป็น RGB
-    image_np = np.array(image).astype(np.uint8)  # แปลงเป็น numpy array และกำหนดประเภทข้อมูลเป็น uint8
-    image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+# แสดงส่วนของอินพุตใน Streamlit
+st.title("โปรแกรมแยกขยะสำหรับนักศึกษา")
+st.write("กรุณากรอกสิ่งที่คุณต้องการทิ้ง")
 
-    # ตรวจจับ QR Code ด้วย OpenCV
-    qr_code_detector = cv2.QRCodeDetector()
-    data, points, _ = qr_code_detector.detectAndDecode(image_bgr)
+# ให้ผู้ใช้กรอกสิ่งที่ต้องการทิ้ง
+input_items = st.text_area("กรอกสิ่งที่ต้องการทิ้ง (ใส่สิ่งของที่ต้องการแยกแต่ละชิ้นในบรรทัดใหม่)", 
+                          help="กรอกขยะที่ต้องการทิ้ง เช่น ขวดพลาสติก, เศษอาหาร, กระดาษ, หรือขยะอื่นๆ")
 
-    if points is not None and data:
-        # แสดงข้อมูล QR Code ที่ตรวจพบ
-        st.write("พบ QR Code ในภาพ:")
-        st.write(f"QR Code Data: {data}")
-    else:
-        # ถ้าไม่พบ QR Code ให้ตรวจจับรูปทรงสี่เหลี่ยม
-        st.write("ไม่พบ QR Code, กำลังตรวจจับรูปทรงสี่เหลี่ยม")
+# แยกสิ่งของจากการกรอกข้อมูล
+if input_items:
+    items = input_items.split("\n")  # แยกตามบรรทัด
+    
+    # สร้างผลลัพธ์ของการแยกประเภทขยะ
+    categorized_waste = {"ขยะทั่วไป": [], "ขยะรีไซเคิล": [], "ขยะเปียก": []}
+    
+    for item in items:
+        item = item.strip()  # กำจัดช่องว่าง
+        result = classify_waste(item)
+        
+        for waste_type, categorized_items in result.items():
+            categorized_waste[waste_type].extend(categorized_items)
+    
+    # แสดงผลลัพธ์ที่แยกประเภทขยะ
+    st.write("ผลลัพธ์การแยกขยะ:")
 
-        # แปลงภาพเป็น Grayscale และใช้ GaussianBlur เพื่อลด noise
-        gray_image = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray_image, (5, 5), 0)
-
-        # ตรวจจับขอบในภาพด้วย Canny edge detector
-        edges = cv2.Canny(blurred, 50, 150)
-
-        # ค้นหา Contours
-        contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        # วาดกรอบรอบ Contours ที่มีลักษณะใกล้เคียงสี่เหลี่ยม (ขอบมนหรือเหลี่ยม)
-        for contour in contours:
-            # ใช้ bounding box ที่มีขอบมนรองรับการเบี้ยวเพื่อครอบ contour
-            rect = cv2.minAreaRect(contour)
-            box = cv2.boxPoints(rect)
-            box = np.int32(box)  # แปลงเป็นจำนวนเต็ม
-
-            # คำนวณอัตราส่วนความกว้างต่อความสูงของ bounding box
-            w, h = rect[1]
-            if w > 0 and h > 0:
-                aspect_ratio = max(w, h) / min(w, h)
-
-                # กรองเฉพาะวัตถุที่มีอัตราส่วนใกล้เคียงกับสี่เหลี่ยมและมีขนาดใหญ่พอสมควร
-                if 0.5 <= aspect_ratio <= 2.0 and max(w, h) > 50:
-                    # วาดกรอบสี่เหลี่ยมที่ขอบมนหรือเหลี่ยมรอบ contour ที่ตรวจพบ
-                    cv2.drawContours(image_bgr, [box], 0, (0, 255, 0), 2)
-
-        # แปลงกลับเป็น RGB เพื่อแสดงใน Streamlit
-        image_result = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-        st.image(image_result, caption="ผลลัพธ์หลังการตรวจจับบรรจุภัณฑ์ที่มีลักษณะขอบโค้งมนหรือเหลี่ยม", use_column_width=True)
+    for waste_type, items in categorized_waste.items():
+        if items:
+            st.write(f"- {waste_type}: {', '.join(items)}")
+        else:
+            st.write(f"- {waste_type}: ไม่มีขยะประเภทนี้ในรายการของคุณ")
