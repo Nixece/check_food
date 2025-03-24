@@ -1,29 +1,23 @@
 import streamlit as st
+import numpy as np
+import cv2
+from PIL import Image
+from classify import classify_waste_image
 
-# ฟังก์ชันแยกประเภทขยะ
-def classify_waste(item):
-    waste_types = {
-        "ขยะทั่วไป": ["ถุงพลาสติก", "โฟม", "เทปกาว", "หลอดพลาสติก"],
-        "ขยะรีไซเคิล": ["ขวดพลาสติก", "กระป๋อง", "กระดาษ", "ขวดแก้ว"],
-        "ขยะเปียก": ["เศษอาหาร", "เปลือกผลไม้", "ใบไม้", "เนื้อสัตว์"]
-    }
-    for waste_type, items in waste_types.items():
-        if item in items:
-            return waste_type
-    return "ไม่ทราบประเภท"
+st.set_page_config(page_title="Waste Classifier", layout="centered")
+st.title("♻️ Waste Classifier (3 Types)")
+st.write("อัปโหลดภาพขยะ แล้วระบบจะบอกว่าขยะประเภทใด")
 
-# UI Streamlit
-st.title("♻️ โปรแกรมแยกขยะอัจฉริยะ")
-st.write("กรุณากรอกสิ่งของที่ต้องการทิ้ง (หนึ่งรายการต่อบรรทัด)")
+uploaded_file = st.file_uploader("เลือกรูปภาพ", type=["jpg", "png", "jpeg"])
 
-# รับข้อมูล
-input_items = st.text_area("🗑️ กรอกขยะที่ต้องการทิ้ง", help="พิมพ์ชื่อขยะ เช่น ขวดพลาสติก, เศษอาหาร")
+if uploaded_file is not None:
+    image = Image.open(uploaded_file).convert("RGB")
+    st.image(image, caption="ภาพที่อัปโหลด", use_column_width=True)
 
-if input_items:
-    with st.spinner("⏳ กำลังประมวลผล..."):
-        items = [item.strip().lower() for item in input_items.split("\n") if item.strip()]
-        categorized_waste = [{"ขยะ": item, "ประเภท": classify_waste(item)} for item in items]
-    
-    # แสดงผลแบบตารางที่โหลดเร็วขึ้น
-    st.subheader("📋 ผลลัพธ์การแยกขยะ")
-    st.table(categorized_waste)
+    # แปลงเป็น array สำหรับโมเดล
+    img_array = np.array(image)
+
+    label, score, category = classify_waste_image(img_array)
+    st.markdown(f"**Label จาก ImageNet:** `{label}`")
+    st.markdown(f"**ความมั่นใจ:** `{score:.2f}`")
+    st.markdown(f"**ประเภทขยะ (ไทย):** 🗑️ `{category}`")
